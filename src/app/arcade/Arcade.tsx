@@ -40,7 +40,11 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
   const [sel, setSel] = useState<number | null>(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [launching, setLaunching] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; sl: number; st: number; moved: boolean } | null>(null);
+  const swallowClickUntil = useRef(0);
   const list = works ?? [];
   const current = sel !== null ? list[sel] : null;
 
@@ -140,8 +144,80 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
     if (!next) sfx("select");
   };
 
+  /**
+   * 컴퓨터에는 터치 드래그가 없으니 마우스로 끄는 동작을 스크롤로 옮긴다.
+   * 6px 넘게 움직인 뒤의 클릭(타일 선택·패널 닫기)은 삼켜서 드래그가 선택으로 새지 않게 한다.
+   * 가로 목록에서 마우스 휠이 먹히지 않는 것도 같은 이벤트에서 함께 처리한다.
+   */
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+
+    const reset = () => {
+      drag.current = null;
+      setDragging(false);
+    };
+
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop, moved: false };
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || e.pointerId !== d.id) return;
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (!d.moved) {
+        if (dx * dx + dy * dy < 36) return;
+        d.moved = true;
+        setDragging(true);
+      }
+      el.scrollLeft = d.sl - dx;
+      el.scrollTop = d.st - dy;
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || e.pointerId !== d.id) return;
+      if (d.moved) swallowClickUntil.current = performance.now() + 400;
+      reset();
+    };
+
+    const onClickCapture = (e: MouseEvent) => {
+      if (performance.now() >= swallowClickUntil.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth + 1) return; // 세로 배치에서는 기본 스크롤을 쓴다
+      if (Math.abs(e.deltaX) > 1 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 트랙패드 가로 제스처는 그대로
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("click", onClickCapture, true);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", reset);
+
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("click", onClickCapture, true);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+
   return (
-    <div className={s.root} data-open={current ? "" : undefined} data-launching={launching ? "" : undefined}>
+    <div className={s.root} data-open={current ? "" : undefined} data-launching={launching ? "" : undefined} data-dragging={dragging ? "" : undefined}>
       {/* 배경 — 떠다니는 윤곽 도형 */}
       <div className={s.bg} aria-hidden>
         {Array.from({ length: 9 }, (_, i) => (
@@ -180,7 +256,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       </div>
 
       {/* 타일 카탈로그 */}
-      <div className={s.scroller} onClick={(e) => e.target === e.currentTarget && close()}>
+      <div className={s.scroller} ref={scroller} onClick={(e) => e.target === e.currentTarget && close()}>
         {works === null ? (
           <ul className={s.grid} aria-hidden>
             {Array.from({ length: 12 }, (_, i) => (
@@ -193,32 +269,34 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
           <ul className={s.grid} onClick={(e) => e.target === e.currentTarget && close()}>
             {list.map((w, i) => (
               <li key={w.slug} style={{ "--i": i } as CSSProperties}>
-                <button
-                  type="button"
-                  ref={(el) => {
-                    tiles.current[i] = el;
-                  }}
-                  className={s.tile}
-                  data-purpose={w.purpose}
-                  aria-pressed={sel === i}
-                  aria-label={`${w.title}${sel === i ? " — 한 번 더 누르면 시작" : ""}`}
-                  onClick={() => (sel === i ? launch(w) : select(i, "tap"))}
-                >
-                  <span className={s.thumb}>
-                    {w.thumbnail ? (
-                      // 업로드 시 이미 1280/640 WebP로 만들어 두므로 next/image 최적화는 쓰지 않는다.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={small(w.thumbnail)} alt="" width={640} height={400} loading={i < 12 ? "eager" : "lazy"} decoding="async" draggable={false} />
-                    ) : (
-                      <span className={s.fallback}>{w.title}</span>
-                    )}
-                  </span>
-                  <span className={s.label}>
-                    <span className={s.dot} aria-hidden />
-                    <span className={s.labelText}>{w.title}</span>
-                  </span>
-                  <span className={s.corners} aria-hidden />
-                </button>
+                <span className={s.floater}>
+                  <button
+                    type="button"
+                    ref={(el) => {
+                      tiles.current[i] = el;
+                    }}
+                    className={s.tile}
+                    data-purpose={w.purpose}
+                    aria-pressed={sel === i}
+                    aria-label={`${w.title}${sel === i ? " — 한 번 더 누르면 시작" : ""}`}
+                    onClick={() => (sel === i ? launch(w) : select(i, "tap"))}
+                  >
+                    <span className={s.thumb}>
+                      {w.thumbnail ? (
+                        // 업로드 시 이미 1280/640 WebP로 만들어 두므로 next/image 최적화는 쓰지 않는다.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={small(w.thumbnail)} alt="" width={640} height={400} loading={i < 12 ? "eager" : "lazy"} decoding="async" draggable={false} />
+                      ) : (
+                        <span className={s.fallback}>{w.title}</span>
+                      )}
+                    </span>
+                    <span className={s.label}>
+                      <span className={s.dot} aria-hidden />
+                      <span className={s.labelText}>{w.title}</span>
+                    </span>
+                    <span className={s.corners} aria-hidden />
+                  </button>
+                </span>
               </li>
             ))}
           </ul>

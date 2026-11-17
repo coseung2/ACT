@@ -167,6 +167,12 @@
 .scroller::-webkit-scrollbar {
   display: none;
 }
+/* 마우스로도 끌어 넘길 수 있다는 신호 — 커서를 잡는 모양으로 */
+@media (hover: hover) and (pointer: fine) {
+  .scroller { cursor: grab; }
+  .root[data-dragging] .scroller,
+  .root[data-dragging] .scroller * { cursor: grabbing; }
+}
 
 /* 가로(기본): 행 수를 고정하고 옆으로 넘긴다 — 콘솔 홈 화면처럼 */
 .grid {
@@ -182,6 +188,7 @@
   list-style: none;
 }
 .grid > li {
+  position: relative;
   min-height: 0;
   animation: deal 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
   animation-delay: calc(min(var(--i, 0), 24) * 22ms);
@@ -189,6 +196,53 @@
 @keyframes deal {
   from { opacity: 0; transform: translateY(16px) scale(0.9); }
 }
+
+/* 게임 콘솔이 진열대에 살짝 삐딱하게 서 있는 느낌.
+ * 타일마다 미세하게 다른 각도로 기울이고, 셀 안에서 10% 줄여 여백을 만든 뒤 천천히 띄운다.
+ * 기울기·뜨는 동작은 래퍼에만 걸어서 타일 자신의 선택/눌림 transform과 겹치지 않게 한다. */
+.floater {
+  --tilt: 0deg;
+  --bob-dur: 6.4s;
+  --bob-delay: calc(var(--i, 0) * -0.57s);
+  position: absolute;
+  inset: 0;
+  display: block;
+  scale: 0.9;
+  rotate: var(--tilt);
+  animation: bob var(--bob-dur) ease-in-out infinite alternate;
+  animation-delay: var(--bob-delay);
+}
+@keyframes bob {
+  from { translate: 0 0; }
+  to { translate: 0 -8px; }
+}
+/* 떠오른 만큼 바닥 그림자는 줄고 옅어진다 */
+.floater::after {
+  content: "";
+  position: absolute;
+  left: 13%;
+  right: 13%;
+  bottom: -5px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(8, 12, 40, 0.34);
+  filter: blur(6px);
+  z-index: -1;
+  animation: bobShadow var(--bob-dur) ease-in-out infinite alternate;
+  animation-delay: var(--bob-delay);
+}
+@keyframes bobShadow {
+  from { translate: 0 0; scale: 1; opacity: 0.5; }
+  to { translate: 0 8px; scale: 0.76; opacity: 0.24; }
+}
+
+/* 각도를 조금씩 흩뜨려 나란히 서 있어도 반듯하지 않게 */
+.grid > li:nth-child(6n + 1) .floater { --tilt: -2.6deg; }
+.grid > li:nth-child(6n + 2) .floater { --tilt: 1.9deg; }
+.grid > li:nth-child(6n + 3) .floater { --tilt: 3.1deg; }
+.grid > li:nth-child(6n + 4) .floater { --tilt: -1.4deg; }
+.grid > li:nth-child(6n + 5) .floater { --tilt: 2.5deg; }
+.grid > li:nth-child(6n + 6) .floater { --tilt: -3.3deg; }
 
 @media (orientation: landscape) and (max-height: 520px) {
   .root {
@@ -603,5 +657,9 @@
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+  }
+  .floater::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
