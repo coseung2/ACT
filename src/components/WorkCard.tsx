@@ -3,6 +3,7 @@ import { LINK_LABEL, type WorkSummary } from "@/lib/content/types";
 import { formatMonth } from "@/lib/format";
 import { CardActions } from "./CardActions";
 import { Thumbnail } from "./Thumbnail";
+import { VideoPreview } from "./VideoPreview";
 import { ExternalButton, TypeBadge } from "./ui";
 import s from "./WorkCard.module.css";
 
@@ -11,7 +12,13 @@ export function WorkCard({ work, priority, liked, bookmarked }: { work: WorkSumm
   return (
     <article className={s.card}>
       <Link href={`/works/${work.slug}`} className={s.thumb}>
-        <Thumbnail src={work.thumbnail} alt={work.thumbnailAlt} title={work.title} purpose={work.purpose} priority={priority} />
+        {work.videoUrl ? (
+          <VideoPreview src={work.videoUrl}>
+            <Thumbnail src={work.thumbnail} alt={work.thumbnailAlt} title={work.title} purpose={work.purpose} priority={priority} />
+          </VideoPreview>
+        ) : (
+          <Thumbnail src={work.thumbnail} alt={work.thumbnailAlt} title={work.title} purpose={work.purpose} priority={priority} />
+        )}
       </Link>
       <div className={s.body}>
         <h3 className={s.title}>

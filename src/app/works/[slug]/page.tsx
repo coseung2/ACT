@@ -59,14 +59,15 @@ export default async function WorkPage(props: PageProps<"/works/[slug]">) {
         <div className={s.main}>
           <div className={s.media}>
             {video && videoExt ? (
-              <video controls preload="metadata" playsInline poster={work.thumbnail ?? undefined}>
+              // 카드에서 넘어오면 바로 재생된다. 소리는 브라우저 정책상 음소거로 시작하고 컨트롤로 켠다.
+              <video controls autoPlay muted preload="metadata" playsInline poster={work.thumbnail ?? undefined}>
                 <source src={video.url} type={VIDEO_MIME[videoExt]} />
               </video>
             ) : yt ? (
               <iframe
-                src={`https://www.youtube-nocookie.com/embed/${yt}`}
+                src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&mute=1&playsinline=1`}
                 title={`${work.title} 영상`}
-                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
                 loading="lazy"
               />
