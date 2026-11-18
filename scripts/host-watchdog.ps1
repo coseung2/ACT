@@ -13,14 +13,22 @@ function Write-Log($message) {
 
 # 감시자는 한 번에 하나만 돈다. 두 개가 함께 돌면 같은 앱을 서로 종료·재시작할 수 있다.
 # 뮤텍스는 프로세스가 끝날 때 풀리므로, 잠금을 잡은 채로 계속 둔다.
-$mutex = New-Object System.Threading.Mutex($false, "act-host-watchdog")
-$hasLock = $false
-try {
-  $hasLock = $mutex.WaitOne(0)
-} catch [System.Threading.AbandonedMutexException] {
-  $hasLock = $true
+# Global\ 이름은 다른 세션(비대화형 작업 등)의 감시자까지 막는다. 권한이 없으면 세션 안에서만 막는다.
+$lockHeld = $false
+foreach ($name in @("Global\act-host-watchdog", "act-host-watchdog")) {
+  try {
+    $mutex = New-Object System.Threading.Mutex($false, $name)
+  } catch {
+    continue
+  }
+  try {
+    $lockHeld = $mutex.WaitOne(0)
+  } catch [System.Threading.AbandonedMutexException] {
+    $lockHeld = $true
+  }
+  break
 }
-if (-not $hasLock) {
+if (-not $lockHeld) {
   Write-Log "another watchdog is already running - exit"
   exit 0
 }
@@ -44,6 +52,15 @@ function Get-AppRecord {
   return [pscustomobject]@{ Pid = [int]$lines[0]; Started = [long]$lines[1] }
 }
 
+# 해당 PID가 3100 포트를 잡고 있는지. 시작 시각을 못 읽은 기록을 판별할 때 쓴다.
+function Test-AppOnPort($procId) {
+  $conns = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue)
+  foreach ($c in $conns) {
+    if ([int]$c.OwningProcess -eq [int]$procId) { return $true }
+  }
+  return $false
+}
+
 # 포트를 계속 잡고 있는 우리 앱을 종료한다.
 # 시작해도 되는 상태(종료했거나 애초에 우리 앱이 아님)면 $true, 아직 살아 있으면 $false를 돌려준다.
 function Stop-App {
@@ -57,9 +74,11 @@ function Stop-App {
     Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
     return $true
   }
+  # 생성 시각을 확인할 수 없으면 시간 비교를 생략하지 않는다. 대신 포트 소유 여부로 우리 앱인지 확인한다.
   $isOurApp = $false
   try {
-    $isOurApp = ($proc.ProcessName -eq "node") -and (($rec.Started -le 0) -or ($proc.StartTime.Ticks -eq $rec.Started))
+    $sameStart = ($rec.Started -gt 0) -and ($proc.StartTime.Ticks -eq $rec.Started)
+    $isOurApp = ($proc.ProcessName -eq "node") -and ($sameStart -or (($rec.Started -le 0) -and (Test-AppOnPort $rec.Pid)))
   } catch {
     $isOurApp = $false
   }
