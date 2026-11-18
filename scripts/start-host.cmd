@@ -10,8 +10,9 @@ if not exist ".data\act.db" (
   exit /b 1
 )
 
-REM cmd의 start는 인용이 깨지기 쉬워 PowerShell로 숨김 실행한다(감시자는 이 셸과 분리된다).
-REM -File 경로에 공백이 있어도 되도록 자식 명령줄에 큰따옴표를 직접 넣는다.
-powershell -NoProfile -WindowStyle Hidden -Command "$p = '%~dp0host-watchdog.ps1'; Start-Process powershell -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File \"' + $p + '\"') -WindowStyle Hidden"
+REM 감시자 경로는 환경 변수로 넘긴다. 작은따옴표나 공백이 있는 경로도 PowerShell 문자열이 깨지지 않는다.
+REM -File 인수는 자식 명령줄에서 큰따옴표로 감싼다(공백 경로 대비). 감시자는 이 셸과 분리된다.
+set "ACT_WATCHDOG=%~dp0host-watchdog.ps1"
+powershell -NoProfile -WindowStyle Hidden -Command "$p = $env:ACT_WATCHDOG; Start-Process powershell -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File \"' + $p + '\"') -WindowStyle Hidden"
 
 exit /b 0
