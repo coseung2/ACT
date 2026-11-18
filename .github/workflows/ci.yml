@@ -5,6 +5,9 @@ name: CI
 
 on:
   pull_request:
+    # PR의 대상 브랜치를 바꾸면(예: main → develop) 새 병합 결과를 다시 검사해야 한다.
+    # 제목·본문만 고친 edited는 아래 job의 if에서 걸러 낸다.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [develop]
 
@@ -19,6 +22,8 @@ permissions:
 jobs:
   check:
     name: lint · typecheck · test
+    # edited 중에서도 대상 브랜치가 실제로 바뀐 경우에만 새로 검사한다.
+    if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

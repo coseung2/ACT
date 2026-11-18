@@ -28,6 +28,9 @@ function small(src: string) {
   return /\.webp$/.test(src) ? src.replace(/\.webp$/, "-640.webp") : src;
 }
 
+/** 드래그로 끝난 클릭만 삼킨다. 키보드로 연 클릭(detail 0)은 그대로 둔다. */
+const swallowedClick = (e: { detail: number }, until: number) => e.detail > 0 && performance.now() < until;
+
 /**
  * 게임 콘솔 라이브러리처럼 작품 타일을 고르는 화면.
  * - 타일을 누르면 선택 효과음과 함께 커지고, 하단에 "게임 입장" 패널이 바로 올라온다.
@@ -324,18 +327,36 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       }
     };
 
+    // 스크롤한 뒤 추가 스크롤 없이 모션 감소를 켜면 배경 오프셋과 흔들림이 그대로 남는다.
+    // 설정이 바뀌는 순간 0으로 되돌려 다음 스크롤까지 어긋난 위치에 머물지 않게 한다.
+    const onReduceChange = () => {
+      if (!reduceMotion.matches) return;
+      root.style.setProperty("--bg-x", "0px");
+      root.style.setProperty("--bg-y", "0px");
+      clearTileVars();
+      delete root.dataset.scrolling;
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    };
+    reduceMotion.addEventListener("change", onReduceChange);
+
     // PC 마우스 드래그로도 가로/세로 스크롤을 당길 수 있게 지원
     let dragging = false;
+    let dragPointer = -1;
     let startX = 0;
     let startY = 0;
     let startLeft = 0;
     let startTop = 0;
 
     const onPointerDown = (e: PointerEvent) => {
+      // 새 입력이 시작되면 이전 드래그로 막아 둔 클릭을 풀어 준다.
+      swallowClickUntil.current = 0;
       pointerX = e.clientX;
       pointerY = e.clientY;
       if (e.pointerType !== "mouse" || e.button !== 0) return;
       dragging = true;
+      // 드래그를 시작한 포인터만 끝낸다. 손가락을 떼는 pointerup이 마우스 드래그를 끊지 않게.
+      dragPointer = e.pointerId;
       draggedRef.current = false;
       startX = e.clientX;
       startY = e.clientY;
@@ -343,9 +364,10 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       startTop = el.scrollTop;
     };
 
-    const onPointerUp = () => {
-      if (!dragging) return;
+    const onPointerUp = (e: PointerEvent) => {
+      if (!dragging || e.pointerId !== dragPointer) return;
       dragging = false;
+      dragPointer = -1;
       delete el.dataset.dragging;
       // 드래그로 끝난 클릭은 삼킨다. setTimeout(0) 순서에 기대지 않고 명시적인 시간 창을 둔다.
       if (draggedRef.current) swallowClickUntil.current = performance.now() + 400;
@@ -354,9 +376,9 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
     const onPointerMove = (e: PointerEvent) => {
       pointerX = e.clientX;
       pointerY = e.clientY;
-      if (!dragging) return;
+      if (!dragging || e.pointerId !== dragPointer) return;
       if ((e.buttons & 1) === 0) {
-        onPointerUp();
+        onPointerUp(e);
         return;
       }
       const dx = e.clientX - startX;
@@ -374,10 +396,15 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
     // 가로 목록은 overflow-y가 hidden이라 세로 휠이 그냥 죽는다. 세로 휠을 가로 이동으로 돌린다.
     // 세로로 쌓이는 화면(포트레이트)에서는 가로 스크롤이 없으므로 기본 스크롤을 그대로 쓴다.
     const onWheel = (e: WheelEvent) => {
+      // 트랙패드 확대(ctrl+휠)는 가로채면 안 된다.
+      if (e.ctrlKey) return;
       if (el.scrollWidth <= el.clientWidth + 1) return;
-      if (Math.abs(e.deltaX) > 1 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      // 가로 성분이 우세하면 브라우저 기본 가로 스크롤에 맡긴다(대각선 입력 포함).
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
       e.preventDefault();
-      el.scrollLeft += e.deltaY;
+      // 줄(1)·페이지(2) 단위 입력은 픽셀로 환산해 더한다.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+      el.scrollLeft += e.deltaY * unit;
     };
 
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -394,6 +421,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
+      reduceMotion.removeEventListener("change", onReduceChange);
       if (rafId) window.cancelAnimationFrame(rafId);
       clearTileVars();
       delete root.dataset.scrolling;
@@ -451,7 +479,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
         ref={scrollerRef}
         className={s.scroller}
         onClick={(e) => {
-          if (performance.now() < swallowClickUntil.current) return;
+          if (swallowedClick(e, swallowClickUntil.current)) return;
           if (e.target === e.currentTarget) close();
         }}
       >
@@ -467,7 +495,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
           <ul
             className={s.grid}
             onClick={(e) => {
-              if (performance.now() < swallowClickUntil.current) return;
+              if (swallowedClick(e, swallowClickUntil.current)) return;
               if (e.target === e.currentTarget) close();
             }}
           >
@@ -482,8 +510,8 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
                   data-purpose={w.purpose}
                   aria-pressed={sel === i}
                   aria-label={`${w.title}${sel === i ? " — 한 번 더 누르면 시작" : ""}`}
-                  onClick={() => {
-                    if (performance.now() < swallowClickUntil.current) return;
+                  onClick={(e) => {
+                    if (swallowedClick(e, swallowClickUntil.current)) return;
                     if (sel === i) launch(w);
                     else select(i, "tap");
                   }}
