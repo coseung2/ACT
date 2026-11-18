@@ -190,6 +190,10 @@
 .sortBtn[aria-expanded="true"] {
   background: var(--yellow);
 }
+.sortBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .sortText {
   line-height: 1;
 }

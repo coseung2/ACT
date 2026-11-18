@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import {
   DEFAULT_SORT,
+  isArchiveSort,
   SORT_OPTIONS,
   sortLabel,
   sortWorks,
@@ -57,6 +58,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   const [sort, setSort] = useState<ArchiveSort>(initialSort);
   const [sortOpen, setSortOpen] = useState(false);
   const sortWrap = useRef<HTMLDivElement | null>(null);
+  const sortBtn = useRef<HTMLButtonElement | null>(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
@@ -67,9 +69,15 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   const list = useMemo(() => sortWorks(works ?? [], sort), [works, sort]);
   const current = sel !== null ? list[sel] : null;
 
+  /** 키보드로 닫았거나 골랐으면 사라진 메뉴 대신 정렬 버튼에 초점을 돌려준다. */
+  const closeSort = () => {
+    setSortOpen(false);
+    sortBtn.current?.focus();
+  };
+
   /** 정렬을 바꾸면 처음 자리로 돌아가고, 주소에도 남겨 새로고침·공유 때 같은 순서로 연다. */
   const pickSort = (next: ArchiveSort) => {
-    setSortOpen(false);
+    closeSort();
     if (next === sort) return;
     setSort(next);
     setSel(null);
@@ -78,7 +86,18 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
     sfx("select");
   };
 
-  // 메뉴 밖을 누르면 접는다.
+  // 뒤로 가기·앞으로 가기로 돌아오면 주소의 기준을 따른다 — 주소가 정렬의 기준이다.
+  // (목록이 오는 동안에는 정렬 버튼을 잠가 두어, 서버가 넘긴 기준과 화면이 어긋나지 않는다.)
+  useEffect(() => {
+    const onPop = () => {
+      const value = new URLSearchParams(window.location.search).get("sort");
+      setSort(isArchiveSort(value) ? value : DEFAULT_SORT);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // 메뉴 밖을 누르면 접는다. 누른 대상의 초점은 건드리지 않는다.
   useEffect(() => {
     if (!sortOpen) return;
     const onDown = (e: PointerEvent) => {
@@ -169,9 +188,11 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           if (next !== sel) select(next, "move");
         }
       } else if (e.key === "Escape") {
-        // 정렬 메뉴가 열려 있으면 그것부터 닫는다.
-        if (sortOpen) setSortOpen(false);
-        else close();
+        // 정렬 메뉴가 열려 있으면 그것부터 닫고 초점을 버튼으로 돌려준다.
+        if (sortOpen) {
+          setSortOpen(false);
+          sortBtn.current?.focus();
+        } else close();
       } else if ((e.key === "Enter" || e.key === " ") && current && document.activeElement === tiles.current[sel!]) {
         e.preventDefault();
         launch(current);
@@ -499,10 +520,12 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         <div className={s.sortWrap} ref={sortWrap}>
           <button
             type="button"
+            ref={sortBtn}
             className={s.sortBtn}
             onClick={() => setSortOpen((open) => !open)}
-            aria-haspopup="true"
+            disabled={works === null}
             aria-expanded={sortOpen}
+            aria-controls="arcade-sort-menu"
             aria-label={`정렬 기준: ${sortLabel(sort)}`}
             title={`정렬: ${sortLabel(sort)}`}
           >
@@ -513,7 +536,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
             <span className={s.sortText}>{sortLabel(sort)}</span>
           </button>
           {sortOpen && (
-            <div className={s.sortMenu} role="group" aria-label="정렬 기준">
+            <div className={s.sortMenu} id="arcade-sort-menu" role="group" aria-label="정렬 기준">
               {SORT_OPTIONS.map((o) => (
                 <button key={o.value} type="button" aria-pressed={o.value === sort} onClick={() => pickSort(o.value)}>
                   {o.label}
