@@ -188,11 +188,15 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.metaKey || e.ctrlKey) return;
-      // 목록이 비어 있어도 정렬 메뉴는 Esc로 닫는다(초점도 버튼으로 돌려준다).
-      if (e.key === "Escape" && sortOpen) {
-        e.preventDefault();
-        setSortOpen(false);
-        sortBtn.current?.focus();
+      // Esc는 정렬 메뉴 → 작품 선택 순서로 닫는다. 목록이 비어 있거나 초점이 정렬 영역에 있어도 동작한다.
+      if (e.key === "Escape") {
+        if (sortOpen) {
+          e.preventDefault();
+          setSortOpen(false);
+          sortBtn.current?.focus();
+        } else {
+          close();
+        }
         return;
       }
       // 정렬 영역에 초점이 있으면 Tab·Enter·화살표는 그 영역의 기본 동작에 맡긴다.
@@ -207,8 +211,6 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           const next = neighbor(sel, dir);
           if (next !== sel) select(next, "move");
         }
-      } else if (e.key === "Escape") {
-        close();
       } else if ((e.key === "Enter" || e.key === " ") && current && document.activeElement === tiles.current[sel!]) {
         e.preventDefault();
         launch(current);
