@@ -5,9 +5,9 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { Chip, ButtonLink } from "@/components/ui";
 import { WorkGrid, WorkGridSkeleton } from "@/components/WorkCard";
 import p from "@/components/page.module.css";
-import { allSubjects, DEFAULT_SORT, getArchive, parseArchiveQuery, type ArchiveQuery, type ArchiveSort } from "@/lib/content/queries";
+import { allSubjects, DEFAULT_SORT, getArchive, parseArchiveQuery, type ArchiveQuery } from "@/lib/content/queries";
 import { reactionProps } from "@/lib/content/stats";
-import { AUDIENCES, WORK_PURPOSE_LABEL, WORK_PURPOSES, WORK_TYPE_LABEL, WORK_TYPES } from "@/lib/content/types";
+import { AUDIENCES, SORT_OPTIONS, WORK_PURPOSE_LABEL, WORK_PURPOSES, WORK_TYPE_LABEL, WORK_TYPES } from "@/lib/content/types";
 import { withParams } from "@/lib/format";
 import { FilterSelects } from "./FilterSelects";
 
@@ -16,13 +16,6 @@ export const metadata: Metadata = {
   description: "선생님들이 만든 수업 도구, 업무 도구, 교실 놀이, 기타 영상과 작품을 용도·형태·대상·교과로 찾아보세요.",
   alternates: { canonical: "/works" },
 };
-
-const SORTS: { value: ArchiveSort; label: string }[] = [
-  { value: "likes", label: "좋아요순" },
-  { value: "bookmarks", label: "북마크순" },
-  { value: "new", label: "최신순" },
-  { value: "title", label: "이름순" },
-];
 
 export default function WorksPage(props: PageProps<"/works">) {
   return (
@@ -114,7 +107,7 @@ async function Archive({ searchParams }: { searchParams: PageProps<"/works">["se
           )}
         </p>
         <div className={p.toolbarLinks}>
-          {SORTS.map((o) => (
+          {SORT_OPTIONS.map((o) => (
             <Link key={o.value} href={href({ sort: o.value === DEFAULT_SORT ? undefined : o.value })} aria-current={sort === o.value ? "true" : undefined} scroll={false}>
               {o.label}
             </Link>

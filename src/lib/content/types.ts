@@ -58,6 +58,50 @@ export const WORK_STATUS_LABEL: Record<WorkStatus, string> = {
 
 export type MakerRef = { slug: string; name: string };
 
+// 작품 목록 정렬 — /works와 아케이드가 같은 기준·이름을 쓴다.
+export const ARCHIVE_SORTS = ["likes", "bookmarks", "new", "title"] as const;
+export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
+
+/** 정렬을 고르지 않았을 때의 순서. 주소에는 넣지 않는다. */
+export const DEFAULT_SORT: ArchiveSort = "likes";
+
+/** 화면에 보이는 순서 그대로. */
+export const SORT_OPTIONS: readonly { value: ArchiveSort; label: string }[] = [
+  { value: "likes", label: "좋아요순" },
+  { value: "bookmarks", label: "북마크순" },
+  { value: "new", label: "최신순" },
+  { value: "title", label: "이름순" },
+];
+
+export function isArchiveSort(value: string | null | undefined): value is ArchiveSort {
+  return (ARCHIVE_SORTS as readonly string[]).includes(value ?? "");
+}
+
+export function sortLabel(sort: ArchiveSort): string {
+  return SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "";
+}
+
+/** 정렬에 필요한 최소 정보. 서버 목록과 아케이드가 같은 함수를 쓴다. */
+export type SortableWork = {
+  title: string;
+  likeCount: number;
+  bookmarkCount: number;
+  /** 최신순 비교용. 서버는 Date, 화면으로 넘길 때는 ms 숫자. */
+  publishedAt: Date | number | null;
+};
+
+const stamp = (v: SortableWork["publishedAt"]) => (v instanceof Date ? v.getTime() : (v ?? 0));
+
+/** 고른 기준으로 정렬한 새 배열. 같은 값끼리는 들어온 순서를 지킨다(안정 정렬). */
+export function sortWorks<T extends SortableWork>(items: readonly T[], sort: ArchiveSort): T[] {
+  const out = [...items];
+  if (sort === "title") out.sort((a, b) => a.title.localeCompare(b.title, "ko"));
+  else if (sort === "likes") out.sort((a, b) => b.likeCount - a.likeCount);
+  else if (sort === "bookmarks") out.sort((a, b) => b.bookmarkCount - a.bookmarkCount);
+  else out.sort((a, b) => stamp(b.publishedAt) - stamp(a.publishedAt));
+  return out;
+}
+
 export type WorkSummary = {
   slug: string;
   purpose: WorkPurpose;
