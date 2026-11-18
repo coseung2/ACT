@@ -18,7 +18,14 @@
   --mint: #5be08a;
   --hud-h: 52px;
   --gap: 12px;
+  /* 세로 이웃은 스크롤 흔들림(±2.5px)·회전·바닥 그림자가 겹칠 수 있어 열 간격보다 넉넉히 둔다. */
+  --row-gap: 20px;
   --rows: 3;
+  --tile-aspect: 1.08;
+  /* 아주 낮은 가로 화면(예: 400×200에서 패널까지 열린 상태)에서는 위 계산식이 테두리·패딩보다
+   * 좁은 열(≈12px)을 만들어 제목이 사라진다. 그 아래로는 줄이지 않고 가로 스크롤로 넘긴다. */
+  --tile-min: 64px;
+  --scatter: 1;
   --panel-h: 84px;
   --reserve: 0px;
   --safe-l: max(16px, env(safe-area-inset-left, 0px));
@@ -55,6 +62,8 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  transform: translate3d(var(--bg-x, 0px), var(--bg-y, 0px), 0);
+  will-change: transform;
 }
 .shape {
   position: absolute;
@@ -163,6 +172,10 @@
   overflow-y: hidden;
   overscroll-behavior: contain;
   scrollbar-width: none;
+  cursor: grab;
+}
+.scroller[data-dragging] {
+  cursor: grabbing;
 }
 .scroller::-webkit-scrollbar {
   display: none;
@@ -173,12 +186,13 @@
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
-  grid-auto-columns: calc((100dvh - var(--safe-t) - var(--hud-h) - 24px - var(--reserve) - (var(--rows) - 1) * var(--gap)) / var(--rows) * 1.08);
-  gap: var(--gap);
+  grid-auto-columns: max(var(--tile-min), calc((100dvh - var(--safe-t) - var(--hud-h) - 24px - var(--reserve) - (var(--rows) - 1) * var(--row-gap)) / var(--rows) * var(--tile-aspect)));
+  column-gap: var(--gap);
+  row-gap: var(--row-gap);
   height: 100%;
   width: max-content;
   margin: 0;
-  padding: 6px 6px 10px;
+  padding: 10px 12px 14px;
   list-style: none;
 }
 .grid > li {
@@ -186,15 +200,33 @@
   animation: deal 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
   animation-delay: calc(min(var(--i, 0), 24) * 22ms);
 }
+/* 7주기 비대칭 스캐터 + 가운데 행 미세 스태거 — 자유분방한 리듬과 드래그 감응 */
+.grid > li:nth-child(3n + 2) { --row-shift: 6px; }
+.grid > li:nth-child(7n + 1) { --rot: -2.6deg; --tx: -3px; --ty: 5px; }
+.grid > li:nth-child(7n + 2) { --rot: 2.2deg;  --tx: 4px;  --ty: -5px; }
+.grid > li:nth-child(7n + 3) { --rot: -1.8deg; --tx: -4px; --ty: 3px; }
+.grid > li:nth-child(7n + 4) { --rot: 2.8deg;  --tx: 3px;  --ty: 6px; }
+.grid > li:nth-child(7n + 5) { --rot: -2.7deg; --tx: 5px;  --ty: -4px; }
+.grid > li:nth-child(7n + 6) { --rot: 1.9deg;  --tx: -5px; --ty: -3px; }
+.grid > li:nth-child(7n + 7) { --rot: -1.4deg; --tx: 3px;  --ty: 6px; }
+
 @keyframes deal {
   from { opacity: 0; transform: translateY(16px) scale(0.9); }
 }
 
 @media (orientation: landscape) and (max-height: 520px) {
   .root {
-    --rows: 2;
-    --hud-h: 44px;
-    --gap: 10px;
+    --rows: 3;
+    --hud-h: 38px;
+    --panel-h: 68px;
+    --tile-aspect: 1.18;
+    --scatter: 0.85;
+  }
+  .scroller {
+    padding: calc(var(--safe-t) + var(--hud-h) + 6px) var(--safe-r) calc(8px + var(--reserve)) var(--safe-l);
+  }
+  .grid {
+    padding: 6px 8px 8px;
   }
 }
 
@@ -202,6 +234,7 @@
 @media (orientation: portrait) {
   .root {
     --panel-h: 168px;
+    --scatter: 0.85;
   }
   .scroller {
     overflow-x: hidden;
@@ -215,9 +248,14 @@
     grid-auto-rows: auto;
     width: auto;
     height: auto;
+    padding: 8px 6px 14px;
   }
   .grid > li {
     aspect-ratio: 1 / 1.08;
+  }
+  .grid > li:nth-child(3n + 2) {
+    --row-shift: 0px;
+    --col-shift: 6px;
   }
 }
 @media (orientation: portrait) and (max-width: 340px) {
@@ -242,6 +280,18 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* 산개(회전 ±2.8deg · 오프셋 ±6px)가 셀 여백을 넘어 이웃 타일과 겹친다.
+   * 카드를 10% 줄여 셀 안에 여백을 만들고, 스크롤 중 흔들림은 아래 tick()의 진폭 상한과
+   * 넉넉한 세로 간격(--row-gap)으로 셀 안에 가둔다. 그림자까지 이웃을 넘지 않아야 한다.
+   * scale은 transform과 별개로 합성되어 선택·눌림·pop의 scale과 곱해질 뿐 덮어쓰지 않는다. */
+  scale: 0.9;
+  transform:
+    translate3d(
+      calc((var(--tx, 0px) + var(--row-shift, 0px)) * var(--scatter, 1) + var(--dx, 0px)),
+      calc((var(--ty, 0px) + var(--col-shift, 0px)) * var(--scatter, 1) + var(--dy, 0px)),
+      0
+    )
+    rotate(calc(var(--rot, 0deg) * var(--scatter, 1) + var(--drot, 0deg)));
   transition:
     transform 180ms cubic-bezier(0.2, 1.4, 0.4, 1),
     box-shadow 180ms ease,
@@ -249,8 +299,36 @@
     border-color 120ms ease;
   outline: none;
 }
+.root[data-scrolling] .tile:not([aria-pressed="true"]) {
+  transition:
+    box-shadow 180ms ease,
+    filter 200ms ease,
+    border-color 120ms ease;
+}
+@media (hover: hover) {
+  /* 누르는 동안에는 hover가 걸리지 않게 한다 — hover의 명시도가 높아 눌림 효과를 덮어쓴다. */
+  .tile:hover:not(:active):not([aria-pressed="true"]) {
+    z-index: 1;
+    transform:
+      translate3d(
+        calc((var(--tx, 0px) + var(--row-shift, 0px)) * var(--scatter, 1) + var(--dx, 0px)),
+        calc((var(--ty, 0px) + var(--col-shift, 0px)) * var(--scatter, 1) + var(--dy, 0px) - 5px),
+        0
+      )
+      rotate(calc(var(--rot, 0deg) * -0.5))
+      scale(1.04);
+    box-shadow: 0 8px 0 var(--ink);
+  }
+}
 .tile:active {
-  transform: translateY(3px) scale(0.97);
+  transform:
+    translate3d(
+      calc((var(--tx, 0px) + var(--row-shift, 0px)) * var(--scatter, 1)),
+      calc((var(--ty, 0px) + var(--col-shift, 0px)) * var(--scatter, 1) + 3px),
+      0
+    )
+    rotate(calc(var(--rot, 0deg) * 0.5))
+    scale(0.96);
   box-shadow: 0 2px 0 var(--ink);
 }
 .thumb {
@@ -322,7 +400,7 @@
 .tile[aria-pressed="true"] {
   z-index: 2;
   border-color: var(--ink);
-  transform: translateY(-6px) scale(1.07);
+  transform: translateY(-6px) rotate(-1.2deg) scale(1.08);
   box-shadow:
     0 0 0 3px var(--mint),
     0 0 22px 6px rgba(91, 224, 138, 0.75),
@@ -330,9 +408,18 @@
   animation: pop 360ms cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 @keyframes pop {
-  0% { transform: translateY(0) scale(0.94); }
-  55% { transform: translateY(-9px) scale(1.12); }
-  100% { transform: translateY(-6px) scale(1.07); }
+  0% {
+    transform:
+      translate3d(
+        calc((var(--tx, 0px) + var(--row-shift, 0px)) * var(--scatter, 1)),
+        calc((var(--ty, 0px) + var(--col-shift, 0px)) * var(--scatter, 1)),
+        0
+      )
+      rotate(calc(var(--rot, 0deg) * var(--scatter, 1)))
+      scale(0.94);
+  }
+  55% { transform: translateY(-9px) rotate(-2deg) scale(1.12); }
+  100% { transform: translateY(-6px) rotate(-1.2deg) scale(1.08); }
 }
 .corners {
   position: absolute;
@@ -361,8 +448,10 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
 }
+/* 키보드 포커스는 outline으로 그린다. 호버·눌림이 box-shadow를 바꿔도 포커스 표시가 가려지지 않는다. */
 .tile:focus-visible:not([aria-pressed="true"]) {
-  box-shadow: 0 0 0 3px var(--yellow), 0 5px 0 var(--ink);
+  outline: 3px solid var(--yellow);
+  outline-offset: 1px;
 }
 /* 하나를 고르면 나머지는 살짝 물러난다 */
 .root[data-open] .tile:not([aria-pressed="true"]) {
@@ -592,6 +681,38 @@
   }
 }
 @media (orientation: landscape) and (max-height: 520px) {
+  .hudLeft,
+  .hudRight {
+    top: calc(var(--safe-t) + 6px);
+  }
+  .hudBtn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+  .tile {
+    padding: 4px;
+    gap: 2px;
+    border-width: 2.5px;
+    border-radius: 11px;
+    box-shadow: 0 3px 0 var(--ink);
+  }
+  .thumb {
+    border-radius: 7px;
+  }
+  .fallback {
+    padding: 5px;
+    font-size: 11px;
+  }
+  .label {
+    font-size: 11px;
+    line-height: 14px;
+    gap: 4px;
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+  }
   .panelTitle {
     font-size: 15px;
   }

@@ -135,15 +135,33 @@ export function findImageUrl(html: string, base: URL): URL | null {
   return null;
 }
 
+/** YouTube 영상 ID는 [A-Za-z0-9_-]만 쓴다. `watch?v=%23`처럼 풀린 값이 들어오면 '#'이 ID에 남아
+ * 임베드 주소의 ?autoplay... 가 프래그먼트로 밀리므로, ID 모양일 때만 돌려준다. */
+const YT_ID = /^[\w-]{6,20}$/;
+
+/** 경로 조각의 퍼센트 인코딩을 한 번 풀어 검증한다. 잘못된 인코딩이면 원문 그대로 둔다. */
+function decodePathPart(part: string) {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
 export function youtubeId(url: string) {
   try {
     const u = new URL(url);
-    if (u.hostname === "youtu.be") return u.pathname.slice(1) || null;
-    if (/(^|\.)youtube\.com$/.test(u.hostname)) {
-      if (u.pathname === "/watch") return u.searchParams.get("v");
-      const m = u.pathname.match(/^\/(shorts|embed|live)\/([\w-]+)/);
-      if (m) return m[2];
+    let id: string | null = null;
+    if (u.hostname === "youtu.be") id = decodePathPart(u.pathname.slice(1)) || null;
+    else if (/(^|\.)youtube\.com$/.test(u.hostname)) {
+      if (u.pathname === "/watch") id = u.searchParams.get("v");
+      else {
+        // 앞부분만 맞추면 `/shorts/abc%23bad`가 `abc`로 통과하므로 조각 전체를 떼어 낸다.
+        const m = u.pathname.match(/^\/(shorts|embed|live)\/([^/]+)/);
+        if (m) id = decodePathPart(m[2]);
+      }
     }
+    return id && YT_ID.test(id) ? id : null;
   } catch {}
   return null;
 }
@@ -152,7 +170,7 @@ export function youtubeId(url: string) {
 export async function fetchLinkImage(link: string): Promise<Uint8Array | null> {
   const deadline = Date.now() + DEADLINE_MS;
   const yt = youtubeId(link);
-  let image: URL | null = yt && /^[\w-]{6,20}$/.test(yt) ? new URL(`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`) : null;
+  let image: URL | null = yt ? new URL(`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`) : null;
   if (!image) {
     const page = await get(new URL(link), HTML_MAX, true, deadline);
     if (!/text\/html|application\/xhtml\+xml/.test(page.type)) return null;

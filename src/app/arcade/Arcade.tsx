@@ -28,6 +28,9 @@ function small(src: string) {
   return /\.webp$/.test(src) ? src.replace(/\.webp$/, "-640.webp") : src;
 }
 
+/** 드래그로 끝난 클릭만 삼킨다. 키보드로 연 클릭(detail 0)은 그대로 둔다. */
+const swallowedClick = (e: { detail: number }, until: number) => e.detail > 0 && performance.now() < until;
+
 /**
  * 게임 콘솔 라이브러리처럼 작품 타일을 고르는 화면.
  * - 타일을 누르면 선택 효과음과 함께 커지고, 하단에 "게임 입장" 패널이 바로 올라온다.
@@ -41,6 +44,9 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const draggedRef = useRef(false);
+  const swallowClickUntil = useRef(0);
   const list = works ?? [];
   const current = sel !== null ? list[sel] : null;
 
@@ -86,7 +92,8 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
   /** 화면상 위치로 다음 타일을 찾는다(행·열 수가 화면 방향마다 달라서 계산 대신 측정). */
   const neighbor = useCallback(
     (from: number, dir: Dir) => {
-      const a = tiles.current[from]?.getBoundingClientRect();
+      const fromEl = tiles.current[from];
+      const a = (fromEl?.parentElement ?? fromEl)?.getBoundingClientRect();
       if (!a) return from;
       const ax = a.left + a.width / 2;
       const ay = a.top + a.height / 2;
@@ -94,7 +101,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       let bestScore = Infinity;
       tiles.current.forEach((el, i) => {
         if (!el || i === from) return;
-        const b = el.getBoundingClientRect();
+        const b = (el.parentElement ?? el).getBoundingClientRect();
         const dx = b.left + b.width / 2 - ax;
         const dy = b.top + b.height / 2 - ay;
         const main = dir === "left" ? -dx : dir === "right" ? dx : dir === "up" ? -dy : dy;
@@ -133,6 +140,296 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [list.length, sel, current, select, neighbor, close, launch]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    const root = el?.parentElement;
+    if (!el || !root) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let lastX = el.scrollLeft;
+    let lastY = el.scrollTop;
+    let smoothDx = 0;
+    let smoothDy = 0;
+    let pointerX = (el.clientWidth || window.innerWidth) * 0.5;
+    let pointerY = (el.clientHeight || window.innerHeight) * 0.5;
+    let rafId = 0;
+
+    type TilePhysics = {
+      x: number;
+      y: number;
+      rot: number;
+      vx: number;
+      vy: number;
+      vrot: number;
+      tx: number;
+      ty: number;
+      trot: number;
+      stiff: number;
+      damp: number;
+      xGain: number;
+      yCross: number;
+      rotDir: number;
+      wavePhase: number;
+      waveFreq: number;
+    };
+
+    const states: TilePhysics[] = [];
+    const getState = (i: number): TilePhysics => {
+      let st = states[i];
+      if (!st) {
+        const phi = (i + 1) * 2.399963;
+        st = {
+          x: 0,
+          y: 0,
+          rot: 0,
+          vx: 0,
+          vy: 0,
+          vrot: 0,
+          tx: 0,
+          ty: 0,
+          trot: 0,
+          stiff: 0.045 + ((i * 37) % 19) * 0.003,
+          damp: 0.78 + ((i * 53) % 13) * 0.005,
+          xGain: 0.45 + Math.abs(Math.sin(phi)) * 0.45,
+          yCross: Math.cos(phi * 1.7) * 0.35,
+          rotDir: (i % 3 === 0 ? -1 : 1) * (0.45 + Math.abs(Math.sin(phi * 2.3)) * 0.45),
+          wavePhase: phi * 2.0,
+          waveFreq: 0.007 + (i % 5) * 0.0018,
+        };
+        states[i] = st;
+      }
+      return st;
+    };
+
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+    /* 스크롤 흔들림의 최대 이동량. 90%로 줄인 타일이 셀에 남기는 여백과 세로 간격(--row-gap)에서
+     * 나온 값이라, 이보다 키우면 스크롤 중 위아래 이웃 타일의 테두리·바닥 그림자가 서로를 파고든다
+     * (모바일 가로 844×390·데스크톱에서 확인). 스프링이 목표를 넘어 튀는 만큼도 여기서 자른다. */
+    const WOBBLE = { x: 3.5, y: 2.5, rot: 2 };
+
+    const clearTileVars = () => {
+      const len = Math.max(tiles.current.length, states.length);
+      for (let i = 0; i < len; i++) {
+        const st = states[i];
+        if (st) {
+          st.x = st.y = st.rot = st.vx = st.vy = st.vrot = st.tx = st.ty = st.trot = 0;
+        }
+        const tile = tiles.current[i];
+        if (tile) {
+          tile.style.setProperty("--dx", "0px");
+          tile.style.setProperty("--dy", "0px");
+          tile.style.setProperty("--drot", "0deg");
+        }
+      }
+    };
+
+    const tick = () => {
+      if (reduceMotion.matches) {
+        clearTileVars();
+        delete root.dataset.scrolling;
+        rafId = 0;
+        return;
+      }
+
+      let allSettled = true;
+      const len = tiles.current.length;
+      for (let i = 0; i < len; i++) {
+        const tile = tiles.current[i];
+        if (!tile) continue;
+        const st = getState(i);
+
+        st.vx = (st.vx + (st.tx - st.x) * st.stiff) * st.damp;
+        st.vy = (st.vy + (st.ty - st.y) * st.stiff) * st.damp;
+        st.vrot = (st.vrot + (st.trot - st.rot) * st.stiff) * st.damp;
+        st.x += st.vx;
+        st.y += st.vy;
+        st.rot += st.vrot;
+
+        // 스프링이 튀어도 셀 여백을 넘지 않게 실제 위치도 자른다.
+        st.x = clamp(st.x, -WOBBLE.x, WOBBLE.x);
+        st.y = clamp(st.y, -WOBBLE.y, WOBBLE.y);
+        st.rot = clamp(st.rot, -WOBBLE.rot, WOBBLE.rot);
+
+        st.tx *= 0.84;
+        st.ty *= 0.84;
+        st.trot *= 0.84;
+
+        tile.style.setProperty("--dx", `${st.x.toFixed(2)}px`);
+        tile.style.setProperty("--dy", `${st.y.toFixed(2)}px`);
+        tile.style.setProperty("--drot", `${st.rot.toFixed(2)}deg`);
+
+        if (
+          Math.abs(st.x) >= 0.05 ||
+          Math.abs(st.y) >= 0.05 ||
+          Math.abs(st.rot) >= 0.05 ||
+          Math.abs(st.vx) >= 0.05 ||
+          Math.abs(st.vy) >= 0.05 ||
+          Math.abs(st.vrot) >= 0.05 ||
+          Math.abs(st.tx) >= 0.05 ||
+          Math.abs(st.ty) >= 0.05 ||
+          Math.abs(st.trot) >= 0.05
+        ) {
+          allSettled = false;
+        }
+      }
+
+      if (allSettled) {
+        smoothDx = smoothDy = 0;
+        clearTileVars();
+        delete root.dataset.scrolling;
+        rafId = 0;
+        return;
+      }
+
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    const onScroll = () => {
+      const dx = el.scrollLeft - lastX;
+      const dy = el.scrollTop - lastY;
+      lastX = el.scrollLeft;
+      lastY = el.scrollTop;
+
+      if (reduceMotion.matches) {
+        root.style.setProperty("--bg-x", "0px");
+        root.style.setProperty("--bg-y", "0px");
+        return;
+      }
+
+      root.style.setProperty("--bg-x", `${(-el.scrollLeft * 0.12).toFixed(1)}px`);
+      root.style.setProperty("--bg-y", `${(-el.scrollTop * 0.12).toFixed(1)}px`);
+
+      smoothDx = smoothDx * 0.65 + dx * 0.35;
+      smoothDy = smoothDy * 0.65 + dy * 0.35;
+      const sPos = el.scrollLeft + el.scrollTop;
+      const speedFactor = clamp(Math.hypot(smoothDx, smoothDy) / 36, 0, 1);
+      const len = tiles.current.length;
+
+      for (let i = 0; i < len; i++) {
+        if (!tiles.current[i]) continue;
+        const st = getState(i);
+        const ripple = 0.65 + 0.7 * (0.5 + 0.5 * Math.sin(st.wavePhase * 0.7 + pointerX * 0.008 + pointerY * 0.008));
+        const waveX = Math.cos(sPos * st.waveFreq + st.wavePhase) * speedFactor * 1.8;
+        const waveY = Math.sin(sPos * st.waveFreq + st.wavePhase) * speedFactor * 2.2;
+
+        // 진폭 상한은 타일 셀 여백에서 나온 값이다. 이보다 키우면 스크롤 중 위아래 이웃의
+        // 그림자·테두리가 서로를 파고든다(모바일 가로 844×390에서 확인).
+        st.tx = clamp((-smoothDx * st.xGain + smoothDy * st.yCross * 0.5) * 0.22 * ripple + waveX, -WOBBLE.x, WOBBLE.x);
+        st.ty = clamp((-smoothDy * st.xGain + smoothDx * st.yCross) * 0.22 * ripple + waveY, -WOBBLE.y, WOBBLE.y);
+        st.trot = clamp((smoothDx * 0.11 - smoothDy * 0.08) * st.rotDir * ripple + waveY * 0.18, -WOBBLE.rot, WOBBLE.rot);
+      }
+
+      if (!rafId) {
+        root.dataset.scrolling = "";
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    // 스크롤한 뒤 추가 스크롤 없이 모션 감소를 켜면 배경 오프셋과 흔들림이 그대로 남는다.
+    // 설정이 바뀌는 순간 0으로 되돌려 다음 스크롤까지 어긋난 위치에 머물지 않게 한다.
+    const onReduceChange = () => {
+      if (!reduceMotion.matches) return;
+      root.style.setProperty("--bg-x", "0px");
+      root.style.setProperty("--bg-y", "0px");
+      // 누적된 스크롤 속도까지 지워, 다시 켠 뒤 첫 스크롤이 이전 속도로 크게 흔들리지 않게 한다.
+      smoothDx = smoothDy = 0;
+      clearTileVars();
+      delete root.dataset.scrolling;
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    };
+    reduceMotion.addEventListener("change", onReduceChange);
+
+    // PC 마우스 드래그로도 가로/세로 스크롤을 당길 수 있게 지원
+    let dragging = false;
+    let dragPointer = -1;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    const onPointerDown = (e: PointerEvent) => {
+      // 새 입력이 시작되면 이전 드래그로 막아 둔 클릭을 풀어 준다.
+      swallowClickUntil.current = 0;
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      dragging = true;
+      // 드래그를 시작한 포인터만 끝낸다. 손가락을 떼는 pointerup이 마우스 드래그를 끊지 않게.
+      dragPointer = e.pointerId;
+      draggedRef.current = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = el.scrollLeft;
+      startTop = el.scrollTop;
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!dragging || e.pointerId !== dragPointer) return;
+      dragging = false;
+      dragPointer = -1;
+      delete el.dataset.dragging;
+      // 드래그로 끝난 클릭은 삼킨다. setTimeout(0) 순서에 기대지 않고 명시적인 시간 창을 둔다.
+      if (draggedRef.current) swallowClickUntil.current = performance.now() + 400;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+      if (!dragging || e.pointerId !== dragPointer) return;
+      if ((e.buttons & 1) === 0) {
+        onPointerUp(e);
+        return;
+      }
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!draggedRef.current && Math.hypot(dx, dy) > 6) {
+        draggedRef.current = true;
+        el.dataset.dragging = "";
+      }
+      if (draggedRef.current) {
+        el.scrollLeft = startLeft - dx;
+        el.scrollTop = startTop - dy;
+      }
+    };
+
+    // 가로 목록은 overflow-y가 hidden이라 세로 휠이 그냥 죽는다. 세로 휠을 가로 이동으로 돌린다.
+    // 세로로 쌓이는 화면(포트레이트)에서는 가로 스크롤이 없으므로 기본 스크롤을 그대로 쓴다.
+    const onWheel = (e: WheelEvent) => {
+      // 트랙패드 확대(ctrl+휠)는 가로채면 안 된다.
+      if (e.ctrlKey) return;
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      // 가로 성분이 우세하면 브라우저 기본 가로 스크롤에 맡긴다(대각선 입력 포함).
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      // 줄(1)·페이지(2) 단위 입력은 픽셀로 환산해 더한다.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+      el.scrollLeft += e.deltaY * unit;
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      reduceMotion.removeEventListener("change", onReduceChange);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      clearTileVars();
+      delete root.dataset.scrolling;
+      delete el.dataset.dragging;
+    };
+  }, []);
 
   const toggleSound = () => {
     const next = !muted;
@@ -180,7 +477,14 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       </div>
 
       {/* 타일 카탈로그 */}
-      <div className={s.scroller} onClick={(e) => e.target === e.currentTarget && close()}>
+      <div
+        ref={scrollerRef}
+        className={s.scroller}
+        onClick={(e) => {
+          if (swallowedClick(e, swallowClickUntil.current)) return;
+          if (e.target === e.currentTarget) close();
+        }}
+      >
         {works === null ? (
           <ul className={s.grid} aria-hidden>
             {Array.from({ length: 12 }, (_, i) => (
@@ -190,7 +494,13 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
         ) : list.length === 0 ? (
           <p className={s.empty}>아직 공개된 작품이 없습니다.</p>
         ) : (
-          <ul className={s.grid} onClick={(e) => e.target === e.currentTarget && close()}>
+          <ul
+            className={s.grid}
+            onClick={(e) => {
+              if (swallowedClick(e, swallowClickUntil.current)) return;
+              if (e.target === e.currentTarget) close();
+            }}
+          >
             {list.map((w, i) => (
               <li key={w.slug} style={{ "--i": i } as CSSProperties}>
                 <button
@@ -202,7 +512,11 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
                   data-purpose={w.purpose}
                   aria-pressed={sel === i}
                   aria-label={`${w.title}${sel === i ? " — 한 번 더 누르면 시작" : ""}`}
-                  onClick={() => (sel === i ? launch(w) : select(i, "tap"))}
+                  onClick={(e) => {
+                    if (swallowedClick(e, swallowClickUntil.current)) return;
+                    if (sel === i) launch(w);
+                    else select(i, "tap");
+                  }}
                 >
                   <span className={s.thumb}>
                     {w.thumbnail ? (
