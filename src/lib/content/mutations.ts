@@ -5,7 +5,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { db, schema } from "@/lib/db";
 import { deleteThumbnail, deleteVideo } from "@/lib/uploads";
 import type { WorkInput } from "./form";
-import { findOrCreateMakers } from "./queries";
+import { findOrCreateMakers, invalidateContentCache } from "./queries";
 import type { WorkStatus } from "./types";
 
 async function newSlug() {
@@ -29,7 +29,11 @@ function setMakerStatements(workSlug: string, makerSlugs: string[]): BatchItem<"
   ];
 }
 
-const batch = (statements: BatchItem<"sqlite">[]) => db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+const batch = async (statements: BatchItem<"sqlite">[]) => {
+  const result = await db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+  invalidateContentCache();
+  return result;
+};
 
 export async function createWork(input: WorkInput, opts: { thumbnail: string | null; ownerId: string; status?: WorkStatus }) {
   const slug = await newSlug();
@@ -109,12 +113,14 @@ export async function setWorkStatus(slug: string, status: WorkStatus, note?: str
     })
     .where(eq(schema.work.slug, slug))
     .run();
+  invalidateContentCache();
 }
 
 export async function deleteWork(slug: string) {
   const prev = await db.select().from(schema.work).where(eq(schema.work.slug, slug)).get();
   if (!prev) return;
   await db.delete(schema.work).where(eq(schema.work.slug, slug)).run();
+  invalidateContentCache();
   await deleteThumbnail(prev.thumbnail);
   for (const link of prev.links) if (link.kind === "file") await deleteVideo(link.url);
 }
