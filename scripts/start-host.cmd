@@ -1,5 +1,7 @@
 @echo off
-REM 노트북에서 aict.app을 띄운다(앱 + Cloudflare Tunnel). 작업 스케줄러 "로그온할 때"에 등록해 쓴다.
+REM 노트북에서 aict.app을 띄운다. 감시자(host-watchdog.ps1)가 앱과 터널을 계속 살려 둔다.
+REM 시작 프로그램 폴더의 런처가 이 파일을 부른다. 이 파일은 UTF-8(한글 메시지용).
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0.."
 
@@ -8,14 +10,9 @@ if not exist ".data\act.db" (
   exit /b 1
 )
 
-start "act-app" /min cmd /c "node --import ./node/install.mjs node_modules\next\dist\bin\next start -p 3100 >> .data\app.log 2>&1"
+REM 감시자 경로는 환경 변수로 넘긴다. 작은따옴표나 공백이 있는 경로도 PowerShell 문자열이 깨지지 않는다.
+REM -File 인수는 자식 명령줄에서 큰따옴표로 감싼다(공백 경로 대비). 감시자는 이 셸과 분리된다.
+set "ACT_WATCHDOG=%~dp0host-watchdog.ps1"
+powershell -NoProfile -WindowStyle Hidden -Command "$p = $env:ACT_WATCHDOG; Start-Process powershell -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File \"' + $p + '\"') -WindowStyle Hidden"
 
-if not exist ".data\tunnel-token" (
-  echo [host] .data\tunnel-token 이 없습니다. 터널은 건너뜁니다.
-  exit /b 0
-)
-
-REM 토큰은 명령줄이 아니라 환경변수로 넘긴다(cloudflared가 TUNNEL_TOKEN을 읽는다).
-for /f "usebackq delims=" %%t in (".data\tunnel-token") do set "TUNNEL_TOKEN=%%t"
-start "act-tunnel" /min cmd /c "\"C:\Program Files (x86)\cloudflared\cloudflared.exe\" tunnel run >> .data\tunnel.log 2>&1"
 exit /b 0
