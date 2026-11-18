@@ -88,10 +88,20 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
 
   // 뒤로 가기·앞으로 가기로 돌아오면 주소의 기준을 따른다 — 주소가 정렬의 기준이다.
   // (목록이 오는 동안에는 정렬 버튼을 잠가 두어, 서버가 넘긴 기준과 화면이 어긋나지 않는다.)
+  const shownSort = useRef<ArchiveSort>(initialSort);
+  useEffect(() => {
+    shownSort.current = sort;
+  }, [sort]);
   useEffect(() => {
     const onPop = () => {
       const value = new URLSearchParams(window.location.search).get("sort");
-      setSort(isArchiveSort(value) ? value : DEFAULT_SORT);
+      const next = isArchiveSort(value) ? value : DEFAULT_SORT;
+      // 기준이 달라지면 이전 선택은 다른 작품을 가리키므로 닫는다.
+      if (next !== shownSort.current) {
+        setSort(next);
+        setSel(null);
+        setSortOpen(false);
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -185,6 +195,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         sortBtn.current?.focus();
         return;
       }
+      // 정렬 영역에 초점이 있으면 Tab·Enter·화살표는 그 영역의 기본 동작에 맡긴다.
+      if (sortWrap.current?.contains(e.target as Node)) return;
       if (!list.length) return;
       const dirs: Record<string, Dir> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
       const dir = dirs[e.key];
@@ -521,7 +533,14 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       </div>
       <div className={s.hudRight}>
         {/* 정렬 — 고른 기준은 주소에 남겨 새로고침·공유에도 유지된다 */}
-        <div className={s.sortWrap} ref={sortWrap}>
+        <div
+          className={s.sortWrap}
+          ref={sortWrap}
+          // Tab으로 정렬 영역을 벗어나면 메뉴만 닫고, 초점은 사용자가 옮긴 곳에 그대로 둔다.
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSortOpen(false);
+          }}
+        >
           <button
             type="button"
             ref={sortBtn}
