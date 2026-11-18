@@ -190,6 +190,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       if (e.altKey || e.metaKey || e.ctrlKey) return;
       // Esc는 정렬 메뉴 → 작품 선택 순서로 닫는다. 목록이 비어 있거나 초점이 정렬 영역에 있어도 동작한다.
       if (e.key === "Escape") {
+        // 키를 누르고 있어도 한 단계만 닫는다(반복 입력이 선택 패널까지 닫지 않게).
+        if (e.repeat) return;
         if (sortOpen) {
           e.preventDefault();
           setSortOpen(false);
