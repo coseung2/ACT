@@ -53,8 +53,13 @@ function Get-AppRecord {
 }
 
 # 해당 PID가 3100 포트를 잡고 있는지. 시작 시각을 못 읽은 기록을 판별할 때 쓴다.
+# 조회 자체가 실패하면 $null(알 수 없음)을 돌려준다 - "소유하지 않음"과 구분해야 한다.
 function Test-AppOnPort($procId) {
-  $conns = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue)
+  try {
+    $conns = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction Stop)
+  } catch {
+    return $null
+  }
   foreach ($c in $conns) {
     if ([int]$c.OwningProcess -eq [int]$procId) { return $true }
   }
@@ -76,11 +81,23 @@ function Stop-App {
   }
   # 생성 시각을 확인할 수 없으면 시간 비교를 생략하지 않는다. 대신 포트 소유 여부로 우리 앱인지 확인한다.
   $isOurApp = $false
+  $identityUnknown = $false
   try {
-    $sameStart = ($rec.Started -gt 0) -and ($proc.StartTime.Ticks -eq $rec.Started)
-    $isOurApp = ($proc.ProcessName -eq "node") -and ($sameStart -or (($rec.Started -le 0) -and (Test-AppOnPort $rec.Pid)))
+    if ($proc.ProcessName -ne "node") {
+      $isOurApp = $false
+    } elseif (($rec.Started -gt 0) -and ($proc.StartTime.Ticks -eq $rec.Started)) {
+      $isOurApp = $true
+    } elseif ($rec.Started -le 0) {
+      $onPort = Test-AppOnPort $rec.Pid
+      if ($null -eq $onPort) { $identityUnknown = $true } else { $isOurApp = [bool]$onPort }
+    }
   } catch {
     $isOurApp = $false
+  }
+  if ($identityUnknown) {
+    # 포트 조회가 실패하면 종료 여부를 판단할 수 없다. 기록을 남겨 두고 다음 주기에 다시 본다.
+    Write-Log "could not check port 3100 for pid $($rec.Pid) - will retry"
+    return $false
   }
   if (-not $isOurApp) {
     Write-Log "pid $($rec.Pid) is not our app - leaving it alone"
