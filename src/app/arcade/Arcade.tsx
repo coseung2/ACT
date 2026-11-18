@@ -16,6 +16,7 @@ import {
   type WorkType,
 } from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
+import { ArcadeMusic } from "./ArcadeMusic";
 import s from "./arcade.module.css";
 
 export type ArcadeWork = {
@@ -520,6 +521,9 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
 
   return (
     <div className={s.root} data-open={current ? "" : undefined} data-launching={launching ? "" : undefined}>
+      {/* 배경음 — 첫 조작 뒤에 시작하고, 효과음과 같은 음소거 스위치를 쓴다 */}
+      <ArcadeMusic />
+
       {/* 배경 — 떠다니는 윤곽 도형 */}
       <div className={s.bg} aria-hidden>
         {Array.from({ length: 9 }, (_, i) => (
@@ -572,7 +576,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
             </div>
           )}
         </div>
-        <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label={muted ? "효과음 켜기" : "효과음 끄기"}>
+        <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label={muted ? "소리 켜기" : "소리 끄기"} title={muted ? "소리 켜기" : "소리 끄기"}>
           {muted ? (
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
               <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
@@ -696,6 +700,9 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           </div>
         )}
       </div>
+
+      {/* 배경음 크레딧 — CC BY 음악은 화면 안에 표기해야 한다 */}
+      <p className={s.credit}>음악 · Eric Matyas / soundimage.org · TinyWorlds (CC0)</p>
     </div>
   );
 }
