@@ -18,6 +18,8 @@
   --mint: #5be08a;
   --hud-h: 52px;
   --gap: 12px;
+  /* 세로 이웃은 스크롤 흔들림(±2.5px)·회전·바닥 그림자가 겹칠 수 있어 열 간격보다 넉넉히 둔다. */
+  --row-gap: 20px;
   --rows: 3;
   --tile-aspect: 1.08;
   --scatter: 1;
@@ -181,8 +183,9 @@
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
-  grid-auto-columns: calc((100dvh - var(--safe-t) - var(--hud-h) - 24px - var(--reserve) - (var(--rows) - 1) * var(--gap)) / var(--rows) * var(--tile-aspect));
-  gap: var(--gap);
+  grid-auto-columns: calc((100dvh - var(--safe-t) - var(--hud-h) - 24px - var(--reserve) - (var(--rows) - 1) * var(--row-gap)) / var(--rows) * var(--tile-aspect));
+  column-gap: var(--gap);
+  row-gap: var(--row-gap);
   height: 100%;
   width: max-content;
   margin: 0;
@@ -212,7 +215,6 @@
   .root {
     --rows: 3;
     --hud-h: 38px;
-    --gap: 8px;
     --panel-h: 68px;
     --tile-aspect: 1.18;
     --scatter: 0.85;
@@ -275,10 +277,11 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  /* 산개(회전 ±2.8deg · 오프셋 ±6px)가 타일 간격 8px보다 커서 이웃 타일과 겹친다.
-   * 카드를 8% 줄여 셀 안에 여백을 만들면 기울기는 그대로 두고 겹침만 사라진다.
+  /* 산개(회전 ±2.8deg · 오프셋 ±6px)가 셀 여백을 넘어 이웃 타일과 겹친다.
+   * 카드를 10% 줄여 셀 안에 여백을 만들고, 스크롤 중 흔들림은 아래 tick()의 진폭 상한과
+   * 넉넉한 세로 간격(--row-gap)으로 셀 안에 가둔다. 그림자까지 이웃을 넘지 않아야 한다.
    * scale은 transform과 별개로 합성되어 선택·눌림·pop의 scale과 곱해질 뿐 덮어쓰지 않는다. */
-  scale: 0.92;
+  scale: 0.9;
   transform:
     translate3d(
       calc((var(--tx, 0px) + var(--row-shift, 0px)) * var(--scatter, 1) + var(--dx, 0px)),
