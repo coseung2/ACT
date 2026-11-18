@@ -71,12 +71,15 @@ curl -s https://aict.app/arcade | grep -o 'labelText">[^<]*' | head -3
 
   ```bat
   @echo off
-  call "C:\path	o\ACT\scripts\start-host.cmd"
+  call "C:\path\to\ACT\scripts\start-host.cmd"
   ```
 
   절전은 끄고(전원 설정), 노트북 덮개를 닫아도 동작하도록 설정한다.
-- 터널은 셸과 분리해 띄운다. `start-host.cmd`가 PowerShell `Start-Process`로 실행하므로 세션이 끝나도 유지된다.
-  서비스로 만들려면(관리자) `cloudflared service install <토큰>`을 쓴다.
+- 터널과 앱은 셸과 분리해 띄운다. `start-host.cmd`가 PowerShell `Start-Process`로 감시자를 실행하므로
+  런처 셸이 끝나도 감시자·앱·터널은 계속 돈다. 다만 Windows에서 **로그아웃하면 그 사용자 세션의 프로세스는
+  모두 끝난다** — 로그아웃 상태에서도 사이트를 운영하려면 앱과 터널 모두 세션 밖에서 실행해야 한다
+  (관리자 권한으로 `cloudflared service install <토큰>`, 앱은 작업 스케줄러의 "부팅 시" 실행).
+  서비스 등록이 어려우면 로그온 상태를 유지한다(화면 잠금은 무관, 절전만 끄면 된다).
 - 백업: `npm run db:backup` → `.data/backups/act-*.db`(최근 14개 유지). 작업 스케줄러에 하루 1회(03:30) 등록해 두었다.
 - 업로드는 `.data/uploads/`에 쌓인다. 이 디렉터리와 `.data/act.db`가 곧 원본이므로 다른 디스크로도 복사해 둔다.
 
