@@ -205,10 +205,18 @@
   display: grid;
   gap: 4px;
   padding: 8px;
+  /* 아주 낮은 화면에서는 메뉴가 화면 밖으로 잘리므로 남은 높이 안에서 스크롤한다. */
+  max-height: calc(100dvh - var(--safe-t) - 70px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 2.5px solid var(--ink);
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 5px 0 var(--ink);
+}
+/* 메뉴가 열리면 하단 선택 패널(z-index 4) 위에 그린다 — 패널이 메뉴를 덮지 않게. */
+.hudRight:has([aria-expanded="true"]) {
+  z-index: 5;
 }
 .sortMenu button {
   padding: 8px 14px;
