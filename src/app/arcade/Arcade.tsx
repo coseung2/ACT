@@ -576,7 +576,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
             </div>
           )}
         </div>
-        <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label={muted ? "소리 켜기" : "소리 끄기"} title={muted ? "소리 켜기" : "소리 끄기"}>
+        <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label="소리" title={muted ? "소리 켜기" : "소리 끄기"}>
           {muted ? (
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
               <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
@@ -701,8 +701,11 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         )}
       </div>
 
-      {/* 배경음 크레딧 — CC BY 음악은 화면 안에 표기해야 한다 */}
-      <p className={s.credit}>음악 · Eric Matyas / soundimage.org · TinyWorlds (CC0)</p>
+      {/* 배경음 크레딧 — CC BY 음악은 화면 안에 곡 이름까지 표기해야 한다 */}
+      <p className={s.credit}>
+        음악 · “Arcade Quirkiness”, “Nostalgic for Arcades” by Eric Matyas (soundimage.org)
+        <br />“Happy Adventure” by TinyWorlds (CC0, OpenGameArt)
+      </p>
     </div>
   );
 }
