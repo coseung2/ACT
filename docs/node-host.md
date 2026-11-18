@@ -71,12 +71,21 @@ curl -s https://aict.app/arcade | grep -o 'labelText">[^<]*' | head -3
 
   ```bat
   @echo off
-  call "C:\path	o\ACT\scripts\start-host.cmd"
+  call "C:\path\to\ACT\scripts\start-host.cmd"
   ```
 
   절전은 끄고(전원 설정), 노트북 덮개를 닫아도 동작하도록 설정한다.
-- 터널은 셸과 분리해 띄운다. `start-host.cmd`가 PowerShell `Start-Process`로 실행하므로 세션이 끝나도 유지된다.
-  서비스로 만들려면(관리자) `cloudflared service install <토큰>`을 쓴다.
+- 터널과 앱은 셸과 분리해 띄운다. `start-host.cmd`가 PowerShell `Start-Process`로 감시자를 실행하므로
+  런처 셸이 끝나도 감시자·앱·터널은 계속 돈다. 다만 Windows에서 **로그아웃하면 그 사용자 세션의 프로세스는
+  모두 끝난다** — 로그아웃 상태에서도 사이트를 운영하려면 앱과 터널 모두 세션 밖에서 실행해야 한다.
+  - 터널: 관리자 권한으로 `cloudflared service install <토큰>`(LocalSystem 서비스로 등록).
+  - 앱(감시자): 작업 스케줄러에서 `scripts\start-host.cmd` 작업을 만들고 트리거는 "부팅할 때"로 둔다.
+    **일반 탭에서 "사용자의 로그온 여부에 관계없이 실행"을 선택하고 실행 계정(암호 저장)을 지정**해야 한다.
+    "로그온할 때" 트리거나 대화형 사용자 토큰만으로 만든 작업은 로그오프와 함께 끝난다.
+  - 작업을 새로 만들었으면 **로그아웃 전에 그 작업을 한 번 실행하거나 재부팅**한다. 그래야 지금 세션의
+    감시자·앱이 세션 밖 프로세스로 넘어간다. 그냥 로그아웃하면 현재 감시자·앱은 끝나고 새 작업은
+    다음 부팅까지 돌지 않아 사이트가 멈춘다.
+  - 서비스·계정 설정이 어려우면 로그온 상태를 유지한다(화면 잠금은 무관, 절전만 끄면 된다).
 - 백업: `npm run db:backup` → `.data/backups/act-*.db`(최근 14개 유지). 작업 스케줄러에 하루 1회(03:30) 등록해 두었다.
 - 업로드는 `.data/uploads/`에 쌓인다. 이 디렉터리와 `.data/act.db`가 곧 원본이므로 다른 디스크로도 복사해 둔다.
 

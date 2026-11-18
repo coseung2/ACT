@@ -1,6 +1,7 @@
 @echo off
 REM 노트북에서 aict.app을 띄운다. 감시자(host-watchdog.ps1)가 앱과 터널을 계속 살려 둔다.
-REM 시작 프로그램 폴더의 런처가 이 파일을 부른다.
+REM 시작 프로그램 폴더의 런처가 이 파일을 부른다. 이 파일은 UTF-8(한글 메시지용).
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0.."
 
@@ -9,7 +10,8 @@ if not exist ".data\act.db" (
   exit /b 1
 )
 
-REM cmd의 start는 인용이 깨지기 쉬워 PowerShell로 숨김 실행한다(감시자는 이 세션과 분리된다).
-powershell -NoProfile -WindowStyle Hidden -Command "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0host-watchdog.ps1' -WindowStyle Hidden"
+REM cmd의 start는 인용이 깨지기 쉬워 PowerShell로 숨김 실행한다(감시자는 이 셸과 분리된다).
+REM -File 경로에 공백이 있어도 되도록 자식 명령줄에 큰따옴표를 직접 넣는다.
+powershell -NoProfile -WindowStyle Hidden -Command "$p = '%~dp0host-watchdog.ps1'; Start-Process powershell -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File \"' + $p + '\"') -WindowStyle Hidden"
 
 exit /b 0
