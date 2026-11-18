@@ -606,12 +606,12 @@
   font-size: 10px;
   line-height: 1.35;
   letter-spacing: 0.01em;
+  /* 두 줄까지만 — 더 길어지면 타일 쪽으로 올라와 가린다. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   pointer-events: none;
-}
-.credit a {
-  color: inherit;
-  text-decoration: underline;
-  pointer-events: auto;
 }
 .root[data-open] .credit {
   z-index: 5;

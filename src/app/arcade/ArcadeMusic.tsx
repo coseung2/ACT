@@ -67,7 +67,8 @@ export function ArcadeMusic() {
       if (isMuted() || !started || document.hidden) return;
       el.play().then(
         () => {
-          if (!alive) return;
+          // 그사이 음소거가 걸렸거나 언마운트됐으면 페이드 인을 시작하지 않는다.
+          if (!alive || isMuted()) return;
           failures = 0;
           fadingOut = false;
           // 재생이 실제로 시작됐으니 첫 조작 대기 리스너는 이제 필요 없다.
@@ -99,7 +100,8 @@ export function ArcadeMusic() {
       const left = el.duration - el.currentTime;
       if (left <= FADE_OUT_MS / 1000) {
         fadingOut = true;
-        fadeTo(0, Math.max(150, left * 1000));
+        // 타이머 첫 틱(40ms) 뒤에도 끝나기 전에 0이 되도록 조금 일찍 끝낸다.
+        fadeTo(0, Math.max(120, left * 1000 - 80));
       }
     };
 
