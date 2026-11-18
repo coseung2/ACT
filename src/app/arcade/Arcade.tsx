@@ -701,10 +701,17 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         )}
       </div>
 
-      {/* 배경음 크레딧 — CC BY 음악은 화면 안에 곡 이름까지 표기해야 한다 */}
+      {/* 배경음 크레딧 — 출처 표기 조건이 있는 곡은 화면 안에 곡 이름과 출처를 남긴다 */}
       <p className={s.credit}>
-        음악 · “Arcade Quirkiness”, “Nostalgic for Arcades” by Eric Matyas (soundimage.org)
-        <br />“Happy Adventure” by TinyWorlds (CC0, OpenGameArt)
+        음악 · “Arcade Quirkiness”, “Nostalgic for Arcades” by{" "}
+        <a href="https://soundimage.org" target="_blank" rel="noreferrer">
+          Eric Matyas (soundimage.org)
+        </a>
+        <br />“Happy Adventure” by TinyWorlds (
+        <a href="https://opengameart.org/content/happy-adventure-loop" target="_blank" rel="noreferrer">
+          CC0, OpenGameArt
+        </a>
+        )
       </p>
     </div>
   );

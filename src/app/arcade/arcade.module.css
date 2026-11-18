@@ -47,7 +47,8 @@
   user-select: none;
 }
 .root[data-open] {
-  --reserve: calc(var(--panel-h) + var(--safe-b));
+  /* 패널 위로 올라오는 크레딧 줄까지 비켜 두어 타일이 크레딧을 파고들지 않게 한다. */
+  --reserve: calc(var(--panel-h) + var(--safe-b) + 30px);
 }
 
 /* 루트 레이아웃의 헤더·푸터는 이 화면 뒤에 깔린다. 바깥 문서는 스크롤하지 않는다. */
@@ -589,24 +590,32 @@
   font-weight: 700;
 }
 
-/* 배경음 크레딧 — CC BY 음악은 화면 안에 표기해야 해서 왼쪽 아래에 작게 남긴다.
- * 선택 패널이 올라오면 패널 위로 올려 계속 읽을 수 있게 한다. */
+/* 배경음 크레딧 — 출처 표기 조건이 있는 곡은 화면 안에 남긴다.
+ * 밝은 그라데이션 위에서도 읽히도록 어두운 칩을 깔고, 패널이 열리면 그 위로 올린다. */
 .credit {
   position: absolute;
   left: var(--safe-l);
-  bottom: calc(3px + var(--safe-b));
+  bottom: calc(4px + var(--safe-b));
   z-index: 2;
   max-width: min(92vw, 640px);
   margin: 0;
-  color: rgba(255, 255, 255, 0.6);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(16, 20, 42, 0.72);
+  color: #fff;
   font-size: 10px;
-  line-height: 1.3;
+  line-height: 1.35;
   letter-spacing: 0.01em;
   pointer-events: none;
 }
+.credit a {
+  color: inherit;
+  text-decoration: underline;
+  pointer-events: auto;
+}
 .root[data-open] .credit {
   z-index: 5;
-  bottom: calc(var(--panel-h) + var(--safe-b) + 4px);
+  bottom: calc(var(--panel-h) + var(--safe-b) + 6px);
 }
 
 /* ── 입장 패널 ──────────────────────────────────────────── */
