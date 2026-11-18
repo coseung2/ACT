@@ -1,8 +1,9 @@
 // R2(Cloudflare) 호환 파일 저장소 — 노트북의 로컬 디렉터리에 그대로 둔다.
 // 앱이 쓰는 put / get(레인지) / head / delete / 멀티파트 업로드만 구현한다.
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import path from "node:path";
 
 const toBytes = async (value) => {
@@ -68,19 +69,25 @@ export function createBucket(root) {
 
     async delete(keys) {
       for (const key of Array.isArray(keys) ? keys : [keys]) {
-        await unlink(fileOf(key)).catch(() => {});
-        await unlink(metaOf(key)).catch(() => {});
+        for (const target of [fileOf(key), metaOf(key)]) {
+          await unlink(target).catch((error) => {
+            // 없는 파일만 넘긴다. 권한 같은 실제 실패는 호출자가 알 수 있게 던진다.
+            if (error?.code !== "ENOENT") throw error;
+          });
+        }
       }
     },
 
-    async list(prefix = "") {
-      const dir = path.dirname(fileOf(prefix || "x"));
-      const names = await readdir(dir, { recursive: true }).catch(() => []);
+    async list(options = {}) {
+      const prefix = typeof options === "string" ? options : (options.prefix ?? "");
+      const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => []);
       return {
-        objects: names
-          .map((name) => String(name).replace(/\\/g, "/"))
-          .filter((name) => name.startsWith(prefix) && !name.endsWith(".meta.json"))
-          .map((name) => ({ key: name })),
+        objects: entries
+          .filter((entry) => entry.isFile())
+          .map((entry) => path.relative(root, path.join(entry.parentPath ?? entry.path ?? root, entry.name)))
+          .map((name) => name.split(path.sep).join("/"))
+          .filter((key) => key.startsWith(prefix) && !key.endsWith(".meta.json") && !key.startsWith(".parts/"))
+          .map((key) => ({ key })),
       };
     },
 
@@ -113,22 +120,32 @@ export function createBucket(root) {
         },
         async complete(parts) {
           await mkdir(path.dirname(fileOf(key)), { recursive: true });
-          const out = createWriteStream(fileOf(key));
-          for (const part of parts) {
-            const partPath = path.join(partDir, String(part.partNumber));
-            await new Promise((resolve, reject) => {
-              const input = createReadStream(partPath);
-              input.on("error", reject);
-              input.on("end", resolve);
-              input.pipe(out, { end: false });
-            });
+          // 임시 파일에 모아 다 쓴 뒤에만 최종 경로로 옮긴다(중간 실패로 반쯤 만든 영상이 남지 않게).
+          const tempPath = `${fileOf(key)}.assembling`;
+          try {
+            await pipeline(
+              Readable.from(
+                (async function* () {
+                  for (const part of parts) {
+                    for await (const chunk of createReadStream(path.join(partDir, String(part.partNumber)))) yield chunk;
+                  }
+                })(),
+              ),
+              createWriteStream(tempPath),
+            );
+            if (options.httpMetadata) await writeMeta(key, options.httpMetadata);
+            await rm(fileOf(key), { force: true }).catch(() => {});
+            await rename(tempPath, fileOf(key));
+          } catch (error) {
+            await rm(tempPath, { force: true }).catch(() => {});
+            throw error;
+          } finally {
+            await rm(partDir, { recursive: true, force: true });
           }
-          await new Promise((resolve) => out.end(resolve));
-          if (options.httpMetadata) await writeMeta(key, options.httpMetadata);
-          await rm(partDir, { recursive: true, force: true });
           const info = await stat(fileOf(key));
           return { key, size: info.size };
         },
+
         async abort() {
           await rm(partDir, { recursive: true, force: true });
         },

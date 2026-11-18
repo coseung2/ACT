@@ -2,6 +2,8 @@
 import { Readable } from "node:stream";
 import sharp from "sharp";
 
+const MIME = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", avif: "image/avif", heif: "image/heif" };
+
 const toBuffer = async (value) => {
   if (value instanceof Uint8Array) return Buffer.from(value);
   if (value && typeof value.getReader === "function") {
@@ -24,7 +26,9 @@ export function createImages() {
     async info(stream) {
       const input = await toBuffer(stream);
       const meta = await sharp(input).metadata();
-      return { format: meta.format, width: meta.width, height: meta.height, fileSize: input.byteLength };
+      // 앱(uploads.ts)은 "image/jpeg" 같은 MIME으로 검사한다. sharp는 디코더 이름(jpeg·heif)을 준다.
+      const mime = meta.format === "heif" && meta.compression === "av1" ? "image/avif" : MIME[meta.format] ?? `image/${meta.format}`;
+      return { format: mime, width: meta.width, height: meta.height, fileSize: input.byteLength };
     },
 
     input(stream) {

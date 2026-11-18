@@ -14,21 +14,34 @@ const meta = (info) => ({
 });
 
 function statement(db, sql, params = []) {
-  const exec = (mode) => {
+  // 행을 돌려주지 않는 문(DELETE·INSERT 등)은 all()을 부르면 예외가 난다. reader로 갈라 run()으로 보낸다.
+  const exec = () => {
     const stmt = db.prepare(sql);
-    if (mode === "raw") return { results: stmt.raw(true).all(...params), success: true, meta: meta() };
-    if (mode === "all") return { results: stmt.all(...params), success: true, meta: meta() };
-    const info = stmt.run(...params);
-    return { success: true, meta: meta(info) };
+    if (!stmt.reader) {
+      const info = stmt.run(...params);
+      return { results: [], success: true, meta: meta(info) };
+    }
+    return { results: stmt.all(...params), success: true, meta: meta() };
   };
   const api = {
     bind: (...values) => statement(db, sql, values),
-    all: async () => exec("all"),
-    raw: async () => exec("raw").results,
-    run: async () => exec("run"),
-    first: async () => exec("all").results[0] ?? null,
+    all: async () => exec(),
+    raw: async () => {
+      const stmt = db.prepare(sql);
+      if (!stmt.reader) {
+        stmt.run(...params);
+        return [];
+      }
+      return stmt.raw(true).all(...params);
+    },
+    run: async () => {
+      const stmt = db.prepare(sql);
+      const info = stmt.run(...params);
+      return { results: [], success: true, meta: meta(info) };
+    },
+    first: async () => exec().results[0] ?? null,
     /** batch에서만 쓴다. */
-    __exec: () => exec("all"),
+    __exec: () => exec(),
   };
   return api;
 }

@@ -8,8 +8,16 @@ import { createD1 } from "./sqlite-d1.mjs";
 import { createBucket } from "./r2-fs.mjs";
 import { createImages } from "./images-sharp.mjs";
 
+import { existsSync } from "node:fs";
+
 const dir = process.env.ACT_DATA_DIR ?? path.join(process.cwd(), ".data");
 const dbPath = process.env.ACT_DB_PATH ?? path.join(dir, "act.db");
+
+if (!existsSync(dbPath)) {
+  console.error(`[node-host] DB가 없습니다: ${dbPath}
+  먼저 npm run db:export && npm run db:import 로 D1 데이터를 가져오세요.`);
+  process.exit(1);
+}
 
 /** Drizzle는 여기서 만든 D1 호환 객체를 그대로 쓴다(스키마는 앱이 테이블을 직접 import 하므로 필요 없다). */
 globalThis.__actDb = drizzle(createD1(dbPath));

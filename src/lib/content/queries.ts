@@ -108,16 +108,21 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
  */
 const LIST_TTL_MS = 15_000;
 let listCache: { at: number; items: WorkSummary[] } | null = null;
+/** 무효화 세대. 조회가 도는 사이 글이 바뀌면 옛 목록을 캐시에 다시 넣지 않으려고 센다. */
+let listGeneration = 0;
 
 export function invalidateContentCache() {
   listCache = null;
+  listGeneration += 1;
 }
 
 async function publishedWorks(): Promise<WorkSummary[]> {
   const now = Date.now();
   if (listCache && now - listCache.at < LIST_TTL_MS) return listCache.items;
+  const generation = listGeneration;
   const items = await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
-  listCache = { at: now, items };
+  // 읽는 동안 글이 바뀌었으면(무효화) 이 결과는 이미 낡았다 — 캐시에 넣지 않는다.
+  if (generation === listGeneration) listCache = { at: now, items };
   return items;
 }
 
