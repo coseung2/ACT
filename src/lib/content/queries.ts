@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db, schema } from "@/lib/db";
 import { textList } from "@/lib/db/text-list";
+import { isVideoPath } from "@/lib/video";
 import { bookmarkCounts, likeCounts } from "./stats";
 import {
   LINK_KINDS,
@@ -58,6 +59,7 @@ function toSummary(w: WorkRow, makers: MakerRef[], counts: { likes: number; book
     subjects: w.subjects,
     makers,
     primaryLink: links[0] ?? null,
+    videoUrl: links.find((l) => isVideoPath(l.url))?.url ?? null,
     status: w.status,
     publishedAt: w.publishedAt,
     updatedAt: w.updatedAt,

@@ -70,6 +70,8 @@ export type WorkSummary = {
   subjects: string[];
   makers: MakerRef[];
   primaryLink: WorkLink | null;
+  /** 직접 올린 영상 파일 주소. 카드에서 마우스를 올리면 미리 재생한다. */
+  videoUrl: string | null;
   status: WorkStatus;
   publishedAt: Date | null;
   updatedAt: Date;
