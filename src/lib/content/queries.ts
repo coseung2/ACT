@@ -102,6 +102,25 @@ export type ArchiveResult = {
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
 
+/**
+ * 공개 작품 목록은 아케이드·작품 목록·홈이 같은 쿼리로 시작한다. 프로세스(isolate) 단위로 짧게 캐시해
+ * 반복 요청에서 D1 조회와 요약 매핑을 건너뛴다. 글을 쓰면 invalidateContentCache()로 즉시 비운다.
+ */
+const LIST_TTL_MS = 15_000;
+let listCache: { at: number; items: WorkSummary[] } | null = null;
+
+export function invalidateContentCache() {
+  listCache = null;
+}
+
+async function publishedWorks(): Promise<WorkSummary[]> {
+  const now = Date.now();
+  if (listCache && now - listCache.at < LIST_TTL_MS) return listCache.items;
+  const items = await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
+  listCache = { at: now, items };
+  return items;
+}
+
 export function parseArchiveQuery(sp: Record<string, string | string[] | undefined>): ArchiveQuery {
   const one = (k: string) => {
     const v = sp[k];
@@ -128,7 +147,7 @@ export function parseArchiveQuery(sp: Record<string, string | string[] | undefin
  */
 export async function getArchive(query: ArchiveQuery): Promise<ArchiveResult> {
   await connection();
-  const all = await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
+  const all = await publishedWorks();
 
   const q = query.q ? norm(query.q) : "";
   const matchQ = (w: WorkSummary) =>
@@ -175,7 +194,7 @@ export async function getLatestWorks(limit = 8): Promise<WorkSummary[]> {
  */
 export async function getArcadeWorks(): Promise<WorkSummary[]> {
   await connection();
-  return await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
+  return await publishedWorks();
 }
 
 export type PopularThumbnail ={ slug: string; title: string; thumbnail: string; thumbnailAlt: string | null };
