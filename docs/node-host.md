@@ -60,8 +60,12 @@ curl -s https://aict.app/arcade | grep -o 'labelText">[^<]*' | head -3
 
 ## 5) 상시 운영
 
-- 로그온 시 자동 시작: `scripts/start-host.cmd`를 작업 스케줄러("로그온할 때")에 등록한다.
+- 로그온 시 자동 시작: `scripts/start-host.cmd`를 시작 프로그램 폴더의 런처가 부른다.
+  (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startupct-host.cmd`)
+  작업 스케줄러의 "로그온할 때" 작업은 관리자 권한이 필요해 `Register-ScheduledTask`가 0x80070005로 실패한다.
   절전은 끄고(전원 설정), 노트북 덮개를 닫아도 동작하도록 설정한다.
+- 터널은 세션과 분리해 띄운다: `start-host.cmd`가 PowerShell `Start-Process`로 실행하므로 셸이 끝나도 유지된다.
+  서비스로 만들려면(관리자) `cloudflared service install <토큰>`을 쓴다.
 - 백업: `npm run db:backup` → `.data/backups/act-*.db`(최근 14개 유지). 작업 스케줄러로 하루 1회.
 - 업로드는 `.data/uploads/`에 쌓인다. 이 디렉터리와 `.data/act.db`가 곧 원본이므로 다른 디스크로도 복사해 둔다.
 
