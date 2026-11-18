@@ -6,6 +6,10 @@ import { textList } from "@/lib/db/text-list";
 import { isVideoPath } from "@/lib/video";
 import { bookmarkCounts, likeCounts } from "./stats";
 import {
+  DEFAULT_SORT,
+  isArchiveSort,
+  sortWorks,
+  type ArchiveSort,
   LINK_KINDS,
   type LinkKind,
   type MakerRef,
@@ -81,10 +85,8 @@ const newest = [desc(schema.work.publishedAt), desc(schema.work.createdAt)];
 
 // ── Archive ──────────────────────────────────────────────────────
 
-export const ARCHIVE_SORTS = ["likes", "new", "title", "bookmarks"] as const;
-export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
-/** 정렬을 고르지 않았을 때의 순서. 주소에는 넣지 않는다. */
-export const DEFAULT_SORT: ArchiveSort = "likes";
+// 정렬 기준은 화면(아케이드)에서도 쓰므로 types.ts에 있다. 기존 import 경로를 위해 그대로 다시 내보낸다.
+export { ARCHIVE_SORTS, DEFAULT_SORT, type ArchiveSort } from "./types";
 
 export type ArchiveQuery = { purpose?: WorkPurpose; type?: WorkType; audience?: string; subject?: string; q?: string; sort?: ArchiveSort; page?: number };
 
@@ -115,7 +117,7 @@ export function parseArchiveQuery(sp: Record<string, string | string[] | undefin
     audience: one("audience"),
     subject: one("subject"),
     q: one("q")?.slice(0, 60),
-    sort: (ARCHIVE_SORTS as readonly string[]).includes(sort ?? "") ? (sort as ArchiveSort) : DEFAULT_SORT,
+    sort: isArchiveSort(sort) ? sort : DEFAULT_SORT,
     page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
   };
 }
@@ -151,12 +153,11 @@ export async function getArchive(query: ArchiveQuery): Promise<ArchiveResult> {
     all: all.length,
   };
 
-  let items = base.filter(matchPurpose).filter(matchType).filter(matchAud).filter(matchSub);
   // 정렬은 안정적이라 숫자가 같은 작품끼리는 최신순이 유지된다.
-  const sort = query.sort ?? DEFAULT_SORT;
-  if (sort === "title") items = [...items].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  else if (sort === "likes") items = [...items].sort((a, b) => b.likeCount - a.likeCount);
-  else if (sort === "bookmarks") items = [...items].sort((a, b) => b.bookmarkCount - a.bookmarkCount);
+  const items = sortWorks(
+    base.filter(matchPurpose).filter(matchType).filter(matchAud).filter(matchSub),
+    query.sort ?? DEFAULT_SORT,
+  );
   const total = items.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(query.page ?? 1, pageCount);
@@ -168,11 +169,13 @@ export async function getLatestWorks(limit = 8): Promise<WorkSummary[]> {
   return summaries(await db.select().from(schema.work).where(published).orderBy(...newest).limit(limit).all());
 }
 
-/** 모바일 아케이드(/arcade) — 공개 작품 전체를 좋아요 많은 순으로. 동률은 최신순을 유지한다. */
+/**
+ * 모바일 아케이드(/arcade) — 공개 작품 전체를 최신순으로 넘긴다.
+ * 화면에서 정렬을 고르므로 정렬은 types.ts의 sortWorks가 하고, 같은 값끼리는 이 순서가 유지된다.
+ */
 export async function getArcadeWorks(): Promise<WorkSummary[]> {
   await connection();
-  const all = await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
-  return [...all].sort((a, b) => b.likeCount - a.likeCount);
+  return await summaries(await db.select().from(schema.work).where(published).orderBy(...newest).all());
 }
 
 export type PopularThumbnail ={ slug: string; title: string; thumbnail: string; thumbnailAlt: string | null };

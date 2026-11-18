@@ -2,8 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { WORK_PURPOSE_LABEL, WORK_TYPE_LABEL, type WorkPurpose, type WorkType } from "@/lib/content/types";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import {
+  DEFAULT_SORT,
+  SORT_OPTIONS,
+  sortLabel,
+  sortWorks,
+  WORK_PURPOSE_LABEL,
+  WORK_TYPE_LABEL,
+  type ArchiveSort,
+  type WorkPurpose,
+  type WorkType,
+} from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
 import s from "./arcade.module.css";
 
@@ -18,7 +28,10 @@ export type ArcadeWork = {
   makers: string[];
   /** 바로 여는 주소. 없거나 깨진 링크면 작품 페이지로 들어간다. */
   url: string | null;
-  likes: number;
+  likeCount: number;
+  bookmarkCount: number;
+  /** 최신순 정렬용 타임스탬프(ms). 화면에서 정렬을 바꿔도 서버와 같은 순서가 나온다. */
+  publishedAt: number;
 };
 
 type Dir = "left" | "right" | "up" | "down";
@@ -38,17 +51,42 @@ const swallowedClick = (e: { detail: number }, until: number) => e.detail > 0 &&
  * - 화살표 키·Enter·Esc로도 움직인다(블루투스 컨트롤러나 키보드).
  * 작품 정보는 패널에만 띄우고, 평소에는 타일이 화면 전체를 쓴다.
  */
-export function Arcade({ works }: { works: ArcadeWork[] | null }) {
+export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | null; sort: ArchiveSort }) {
   const router = useRouter();
   const [sel, setSel] = useState<number | null>(null);
+  const [sort, setSort] = useState<ArchiveSort>(initialSort);
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortWrap = useRef<HTMLDivElement | null>(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const draggedRef = useRef(false);
   const swallowClickUntil = useRef(0);
-  const list = works ?? [];
+  // 서버가 최신순으로 넘긴 목록을 화면에서 바로 정렬한다. 처음 순서는 ?sort=를 따른다.
+  const list = useMemo(() => sortWorks(works ?? [], sort), [works, sort]);
   const current = sel !== null ? list[sel] : null;
+
+  /** 정렬을 바꾸면 처음 자리로 돌아가고, 주소에도 남겨 새로고침·공유 때 같은 순서로 연다. */
+  const pickSort = (next: ArchiveSort) => {
+    setSortOpen(false);
+    if (next === sort) return;
+    setSort(next);
+    setSel(null);
+    scrollerRef.current?.scrollTo({ left: 0, top: 0 });
+    window.history.replaceState(null, "", next === DEFAULT_SORT ? "/arcade" : `/arcade?sort=${next}`);
+    sfx("select");
+  };
+
+  // 메뉴 밖을 누르면 접는다.
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!sortWrap.current?.contains(e.target as Node)) setSortOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [sortOpen]);
 
   const focusTile = useCallback((i: number) => {
     const el = tiles.current[i];
@@ -131,7 +169,9 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
           if (next !== sel) select(next, "move");
         }
       } else if (e.key === "Escape") {
-        close();
+        // 정렬 메뉴가 열려 있으면 그것부터 닫는다.
+        if (sortOpen) setSortOpen(false);
+        else close();
       } else if ((e.key === "Enter" || e.key === " ") && current && document.activeElement === tiles.current[sel!]) {
         e.preventDefault();
         launch(current);
@@ -139,7 +179,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [list.length, sel, current, select, neighbor, close, launch]);
+  }, [list.length, sel, current, select, neighbor, close, launch, sortOpen]);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -455,6 +495,33 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
         {works && <span className={s.count}>{works.length}</span>}
       </div>
       <div className={s.hudRight}>
+        {/* 정렬 — 고른 기준은 주소에 남겨 새로고침·공유에도 유지된다 */}
+        <div className={s.sortWrap} ref={sortWrap}>
+          <button
+            type="button"
+            className={s.sortBtn}
+            onClick={() => setSortOpen((open) => !open)}
+            aria-haspopup="true"
+            aria-expanded={sortOpen}
+            aria-label={`정렬 기준: ${sortLabel(sort)}`}
+            title={`정렬: ${sortLabel(sort)}`}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+              <path d="M4 7h10M4 12h7M4 17h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M17 5v13m0 0-3-3m3 3 3-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className={s.sortText}>{sortLabel(sort)}</span>
+          </button>
+          {sortOpen && (
+            <div className={s.sortMenu} role="group" aria-label="정렬 기준">
+              {SORT_OPTIONS.map((o) => (
+                <button key={o.value} type="button" aria-pressed={o.value === sort} onClick={() => pickSort(o.value)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label={muted ? "효과음 켜기" : "효과음 끄기"}>
           {muted ? (
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
@@ -495,6 +562,7 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
           <p className={s.empty}>아직 공개된 작품이 없습니다.</p>
         ) : (
           <ul
+            key={sort}
             className={s.grid}
             onClick={(e) => {
               if (swallowedClick(e, swallowClickUntil.current)) return;
@@ -562,8 +630,8 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
               </p>
             </div>
             <div className={s.panelActions}>
-              <span className={s.likes} aria-label={`좋아요 ${current.likes}`}>
-                ♥ {current.likes}
+              <span className={s.likes} aria-label={`좋아요 ${current.likeCount}`}>
+                ♥ {current.likeCount}
               </span>
               <Link href={`/works/${current.slug}`} className={s.infoBtn} onClick={() => sfx("select")}>
                 정보
