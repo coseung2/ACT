@@ -701,7 +701,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         )}
       </div>
 
-      {/* 배경음 크레딧 — CC BY 음악은 화면 안에 곡 이름까지 표기해야 한다 */}
+      {/* 배경음 크레딧 — 출처 표기 조건이 있는 곡은 화면 안에 곡 이름과 출처를 남긴다.
+          글자만 두어 타일 클릭을 가로채지 않는다(표기 조건은 주소 텍스트로 충족). */}
       <p className={s.credit}>
         음악 · “Arcade Quirkiness”, “Nostalgic for Arcades” by Eric Matyas (soundimage.org)
         <br />“Happy Adventure” by TinyWorlds (CC0, OpenGameArt)

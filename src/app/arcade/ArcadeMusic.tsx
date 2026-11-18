@@ -37,6 +37,8 @@ export function ArcadeMusic() {
     let fadingOut = false;
     let failures = 0;
     let fadeTimer = 0;
+    /** 정리(언마운트) 뒤에 늦게 도착한 play() 콜백이 타이머를 다시 만들지 않게 한다. */
+    let alive = true;
 
     el.volume = 0;
 
@@ -65,6 +67,8 @@ export function ArcadeMusic() {
       if (isMuted() || !started || document.hidden) return;
       el.play().then(
         () => {
+          // 그사이 음소거가 걸렸거나 언마운트됐으면 페이드 인을 시작하지 않는다.
+          if (!alive || isMuted()) return;
           failures = 0;
           fadingOut = false;
           // 재생이 실제로 시작됐으니 첫 조작 대기 리스너는 이제 필요 없다.
@@ -72,13 +76,15 @@ export function ArcadeMusic() {
           fadeTo(VOLUME, FADE_IN_MS);
         },
         (err: unknown) => {
-          // 탭을 숨겨 중단된 경우(AbortError)는 의지를 유지하고, 자동재생 차단이면 다음 조작에서 다시 시도한다.
-          if ((err as DOMException | undefined)?.name !== "AbortError") started = false;
+          // 탭을 숨겨 중단된 경우(AbortError)나 곡 자체를 못 읽은 경우는 의지를 유지하고,
+          // 자동재생 차단(NotAllowedError)일 때만 다음 조작에서 다시 시도한다.
+          if ((err as DOMException | undefined)?.name === "NotAllowedError") started = false;
         },
       );
     };
 
     const next = () => {
+      if (!alive) return;
       clearFade();
       fadingOut = false;
       track = (track + 1) % TRACKS.length;
@@ -87,18 +93,21 @@ export function ArcadeMusic() {
       play();
     };
 
-    // 끝에서 뚝 끊기지 않게 미리 볼륨을 낮춘다. timeupdate는 여러 번 오므로 한 번만 건다.
+    // 끝에서 뚝 끊기지 않게 미리 볼륨을 낮춘다. 남은 시간에 맞춰 0까지 내려간다.
+    // timeupdate는 여러 번 오므로 한 번만 건다.
     const onTime = () => {
       if (fadingOut || !el.duration) return;
-      if (el.currentTime > el.duration - FADE_OUT_MS / 1000) {
+      const left = el.duration - el.currentTime;
+      if (left <= FADE_OUT_MS / 1000) {
         fadingOut = true;
-        fadeTo(0, FADE_OUT_MS);
+        // 타이머 첫 틱(40ms) 뒤에도 끝나기 전에 0이 되도록 조금 일찍 끝낸다.
+        fadeTo(0, Math.max(120, left * 1000 - 80));
       }
     };
 
     const onError = () => {
       // 받지 못한 곡은 건너뛴다. 세 곡이 모두 실패하면 조용히 멈춘다.
-      if (failures >= TRACKS.length) {
+      if (failures + 1 >= TRACKS.length) {
         started = false;
         return;
       }
@@ -136,6 +145,7 @@ export function ArcadeMusic() {
     };
 
     return () => {
+      alive = false;
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("error", onError);
