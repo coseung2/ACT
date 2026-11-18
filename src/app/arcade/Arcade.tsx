@@ -177,7 +177,15 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!list.length || e.altKey || e.metaKey || e.ctrlKey) return;
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
+      // 목록이 비어 있어도 정렬 메뉴는 Esc로 닫는다(초점도 버튼으로 돌려준다).
+      if (e.key === "Escape" && sortOpen) {
+        e.preventDefault();
+        setSortOpen(false);
+        sortBtn.current?.focus();
+        return;
+      }
+      if (!list.length) return;
       const dirs: Record<string, Dir> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
       const dir = dirs[e.key];
       if (dir) {
@@ -188,11 +196,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           if (next !== sel) select(next, "move");
         }
       } else if (e.key === "Escape") {
-        // 정렬 메뉴가 열려 있으면 그것부터 닫고 초점을 버튼으로 돌려준다.
-        if (sortOpen) {
-          setSortOpen(false);
-          sortBtn.current?.focus();
-        } else close();
+        close();
       } else if ((e.key === "Enter" || e.key === " ") && current && document.activeElement === tiles.current[sel!]) {
         e.preventDefault();
         launch(current);
