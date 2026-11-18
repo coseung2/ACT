@@ -448,8 +448,10 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
 }
+/* 키보드 포커스는 outline으로 그린다. 호버·눌림이 box-shadow를 바꿔도 포커스 표시가 가려지지 않는다. */
 .tile:focus-visible:not([aria-pressed="true"]) {
-  box-shadow: 0 0 0 3px var(--yellow), 0 5px 0 var(--ink);
+  outline: 3px solid var(--yellow);
+  outline-offset: 1px;
 }
 /* 하나를 고르면 나머지는 살짝 물러난다 */
 .root[data-open] .tile:not([aria-pressed="true"]) {
