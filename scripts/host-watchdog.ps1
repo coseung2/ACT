@@ -11,6 +11,20 @@ function Write-Log($message) {
   "$(Get-Date -Format s) $message" | Out-File -Append -Encoding utf8 $log
 }
 
+# 감시자는 한 번에 하나만 돈다. 두 개가 함께 돌면 같은 앱을 서로 종료·재시작할 수 있다.
+# 뮤텍스는 프로세스가 끝날 때 풀리므로, 잠금을 잡은 채로 계속 둔다.
+$mutex = New-Object System.Threading.Mutex($false, "act-host-watchdog")
+$hasLock = $false
+try {
+  $hasLock = $mutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+  $hasLock = $true
+}
+if (-not $hasLock) {
+  Write-Log "another watchdog is already running - exit"
+  exit 0
+}
+
 function Test-App {
   try {
     $res = Invoke-WebRequest "http://127.0.0.1:3100/robots.txt" -TimeoutSec 5 -UseBasicParsing
@@ -30,32 +44,43 @@ function Get-AppRecord {
   return [pscustomobject]@{ Pid = [int]$lines[0]; Started = [long]$lines[1] }
 }
 
+# 포트를 계속 잡고 있는 우리 앱을 종료한다.
+# 시작해도 되는 상태(종료했거나 애초에 우리 앱이 아님)면 $true, 아직 살아 있으면 $false를 돌려준다.
 function Stop-App {
   $rec = Get-AppRecord
   if ($null -eq $rec) {
     Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
-    return
+    return $true
   }
   $proc = Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue
-  if ($proc) {
+  if (-not $proc) {
+    Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
+    return $true
+  }
+  $isOurApp = $false
+  try {
+    $isOurApp = ($proc.ProcessName -eq "node") -and (($rec.Started -le 0) -or ($proc.StartTime.Ticks -eq $rec.Started))
+  } catch {
     $isOurApp = $false
-    try {
-      $isOurApp = ($proc.ProcessName -eq "node") -and (($rec.Started -le 0) -or ($proc.StartTime.Ticks -eq $rec.Started))
-    } catch {
-      $isOurApp = $false
-    }
-    if ($isOurApp) {
-      Write-Log "app pid $($rec.Pid) is unresponsive - stopping it"
-      Stop-Process -Id $rec.Pid -Force -ErrorAction SilentlyContinue
-      for ($i = 0; $i -lt 20; $i++) {
-        Start-Sleep -Milliseconds 500
-        if (-not (Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue)) { break }
-      }
-    } else {
-      Write-Log "pid $($rec.Pid) is not our app - leaving it alone"
-    }
+  }
+  if (-not $isOurApp) {
+    Write-Log "pid $($rec.Pid) is not our app - leaving it alone"
+    Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
+    return $true
+  }
+  Write-Log "app pid $($rec.Pid) is unresponsive - stopping it"
+  Stop-Process -Id $rec.Pid -Force -ErrorAction SilentlyContinue
+  for ($i = 0; $i -lt 20; $i++) {
+    Start-Sleep -Milliseconds 500
+    if (-not (Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue)) { break }
+  }
+  if (Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue) {
+    # 권한 문제 등으로 종료하지 못했다. 기록을 남겨 두고 다음 주기에 다시 시도한다.
+    Write-Log "could not stop pid $($rec.Pid) - will retry"
+    return $false
   }
   Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
+  return $true
 }
 
 function Start-App {
@@ -93,8 +118,11 @@ Write-Log "watchdog start"
 while ($true) {
   if (-not (Test-App)) {
     Write-Log "app down - restart"
-    Stop-App
-    Start-App
+    if (Stop-App) {
+      Start-App
+    } else {
+      Write-Log "port 3100 is still held - skip restart"
+    }
     Start-Sleep -Seconds 10
   }
   if (-not (Get-Process cloudflared -ErrorAction SilentlyContinue)) {
