@@ -20,23 +20,39 @@ function Test-App {
   }
 }
 
-# 마지막으로 띄운 앱의 PID. 응답은 멈췄는데 포트를 계속 잡고 있는 프로세스를 정리하기 위해 기록한다.
-function Get-AppPid {
+# 마지막으로 띄운 앱의 PID와 생성 시각. 응답은 멈췄는데 포트를 계속 잡고 있는 프로세스를 정리하기 위해 기록한다.
+# PID는 Windows에서 재사용될 수 있으므로, 실행 시각까지 같을 때만 우리 앱으로 보고 종료한다.
+function Get-AppRecord {
   if (-not (Test-Path $appPidFile)) { return $null }
-  $text = (Get-Content $appPidFile -Raw).Trim()
-  if ($text -match '^\d+$') { return [int]$text }
-  return $null
+  $lines = @(Get-Content $appPidFile | Where-Object { $_ -ne "" })
+  if ($lines.Count -lt 2) { return $null }
+  if ($lines[0] -notmatch '^\d+$' -or $lines[1] -notmatch '^-?\d+$') { return $null }
+  return [pscustomobject]@{ Pid = [int]$lines[0]; Started = [long]$lines[1] }
 }
 
 function Stop-App {
-  $appPid = Get-AppPid
-  if ($null -eq $appPid) { return }
-  if (Get-Process -Id $appPid -ErrorAction SilentlyContinue) {
-    Write-Log "app pid $appPid is unresponsive - stopping it"
-    Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue
-    for ($i = 0; $i -lt 20; $i++) {
-      Start-Sleep -Milliseconds 500
-      if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }
+  $rec = Get-AppRecord
+  if ($null -eq $rec) {
+    Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
+    return
+  }
+  $proc = Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue
+  if ($proc) {
+    $isOurApp = $false
+    try {
+      $isOurApp = ($proc.ProcessName -eq "node") -and (($rec.Started -le 0) -or ($proc.StartTime.Ticks -eq $rec.Started))
+    } catch {
+      $isOurApp = $false
+    }
+    if ($isOurApp) {
+      Write-Log "app pid $($rec.Pid) is unresponsive - stopping it"
+      Stop-Process -Id $rec.Pid -Force -ErrorAction SilentlyContinue
+      for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (-not (Get-Process -Id $rec.Pid -ErrorAction SilentlyContinue)) { break }
+      }
+    } else {
+      Write-Log "pid $($rec.Pid) is not our app - leaving it alone"
     }
   }
   Remove-Item $appPidFile -Force -ErrorAction SilentlyContinue
@@ -49,7 +65,11 @@ function Start-App {
     -RedirectStandardOutput (Join-Path $root ".data\app.log") `
     -RedirectStandardError (Join-Path $root ".data\app.err") `
     -PassThru
-  if ($proc) { Set-Content -Path $appPidFile -Value $proc.Id -Encoding ascii }
+  if ($proc) {
+    $started = 0
+    try { $started = $proc.StartTime.Ticks } catch { $started = 0 }
+    Set-Content -Path $appPidFile -Value @($proc.Id, $started) -Encoding ascii
+  }
 }
 
 function Start-Tunnel {
@@ -65,7 +85,7 @@ function Start-Tunnel {
   if (-not $cf) { Write-Log "cloudflared not found"; return }
   $tunnelLog = Join-Path $root ".data\tunnel.log"
   Start-Process -FilePath $cf `
-    -ArgumentList @("tunnel", "--logfile", ('"' + $tunnelLog + '"')) `
+    -ArgumentList @("tunnel", "--logfile", ('"' + $tunnelLog + '"'), "run") `
     -WorkingDirectory $root -WindowStyle Hidden
 }
 
