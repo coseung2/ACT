@@ -13,7 +13,8 @@ export function WorkCard({ work, priority, liked, bookmarked }: { work: WorkSumm
     <article className={s.card}>
       <Link href={`/works/${work.slug}`} className={s.thumb}>
         {work.videoUrl ? (
-          <VideoPreview src={work.videoUrl}>
+          // 영상 주소가 바뀌면 재생 상태를 새로 잡도록 다시 마운트한다.
+          <VideoPreview key={work.videoUrl} src={work.videoUrl}>
             <Thumbnail src={work.thumbnail} alt={work.thumbnailAlt} title={work.title} purpose={work.purpose} priority={priority} />
           </VideoPreview>
         ) : (

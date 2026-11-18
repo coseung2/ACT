@@ -83,8 +83,9 @@ export function VideoPreview({ src, children }: { src: string; children: ReactNo
       }}
     >
       {children}
-      {/* 장식용이라 초점·낭독 대상에서 뺀다. 링크 이동은 카드가 그대로 맡는다. */}
-      <video ref={video} className={s.video} src={src} muted loop playsInline preload="none" tabIndex={-1} aria-hidden />
+      {/* 장식용이라 초점·낭독 대상에서 뺀다. 링크 이동은 카드가 그대로 맡는다.
+          재생이 시작된 뒤 디코딩 오류가 나면 play()는 이미 끝나 있으므로 error로 상태를 되돌린다. */}
+      <video ref={video} className={s.video} src={src} muted loop playsInline preload="none" tabIndex={-1} aria-hidden onError={() => setPlaying(false)} />
       <span className={s.badge} aria-hidden>
         <svg viewBox="0 0 24 24" width="11" height="11">
           <path d="M8 5v14l11-7z" fill="currentColor" />

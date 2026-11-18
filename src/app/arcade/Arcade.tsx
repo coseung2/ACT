@@ -333,6 +333,8 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
       if (!reduceMotion.matches) return;
       root.style.setProperty("--bg-x", "0px");
       root.style.setProperty("--bg-y", "0px");
+      // 누적된 스크롤 속도까지 지워, 다시 켠 뒤 첫 스크롤이 이전 속도로 크게 흔들리지 않게 한다.
+      smoothDx = smoothDy = 0;
       clearTileVars();
       delete root.dataset.scrolling;
       if (rafId) window.cancelAnimationFrame(rafId);
