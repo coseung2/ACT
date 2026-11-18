@@ -54,14 +54,15 @@ function Get-AppRecord {
 
 # 해당 PID가 3100 포트를 잡고 있는지. 시작 시각을 못 읽은 기록을 판별할 때 쓴다.
 # 조회 자체가 실패하면 $null(알 수 없음)을 돌려준다 - "소유하지 않음"과 구분해야 한다.
+# 포트로 필터하면 리스너가 없을 때 cmdlet이 오류를 내므로, 전체 리스너를 받아 비교한다.
 function Test-AppOnPort($procId) {
   try {
-    $conns = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction Stop)
+    $conns = @(Get-NetTCPConnection -State Listen -ErrorAction Stop)
   } catch {
     return $null
   }
   foreach ($c in $conns) {
-    if ([int]$c.OwningProcess -eq [int]$procId) { return $true }
+    if (([int]$c.LocalPort -eq 3100) -and ([int]$c.OwningProcess -eq [int]$procId)) { return $true }
   }
   return $false
 }
