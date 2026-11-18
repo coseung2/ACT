@@ -12,11 +12,11 @@ on:
     branches: [develop]
 
 # 같은 브랜치에 푸시가 몰리면 이전 실행은 버린다.
-# 다만 제목·본문만 고친 edited 실행은 job 조건에서 건너뛰므로, 그 실행이 진행 중인 검사를
-# 취소하지 않게 한다(취소되면 현재 커밋의 검사가 끝내 남지 않는다).
+# 제목·본문만 고친 edited 실행은 아래 job 조건에서 건너뛰므로, 그 실행이 진행 중이거나 대기 중인
+# 실제 검사를 밀어내지 않도록 그룹을 따로 묶는다(같은 그룹에 들어오면 대기 실행이 취소된다).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event.action != 'edited' }}
+  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' && 'edit' || 'run' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
