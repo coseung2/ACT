@@ -15,7 +15,7 @@ if not exist ".data\tunnel-token" (
   exit /b 0
 )
 
-REM 토큰은 명령줄이 아니라 환경변수로 넘긴다(cloudflared가 TUNNEL_TOKEN을 읽는다).
-for /f "usebackq delims=" %%t in (".data\tunnel-token") do set "TUNNEL_TOKEN=%%t"
-start "act-tunnel" /min cmd /c "\"C:\Program Files (x86)\cloudflared\cloudflared.exe\" tunnel run >> .data\tunnel.log 2>&1"
+REM 경로에 공백이 있어 cmd의 start로는 인용이 깨진다 — PowerShell로 띄운다(토큰은 환경변수로).
+powershell -NoProfile -WindowStyle Hidden -Command "$env:TUNNEL_TOKEN = (Get-Content '.data\tunnel-token' -Raw).Trim(); Start-Process -FilePath 'C:\Program Files (x86)\cloudflared\cloudflared.exe' -ArgumentList 'tunnel','run' -WindowStyle Hidden"
+
 exit /b 0
