@@ -201,6 +201,11 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
 
     const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+    /* 스크롤 흔들림의 최대 이동량. 90%로 줄인 타일이 셀에 남기는 여백과 세로 간격(--row-gap)에서
+     * 나온 값이라, 이보다 키우면 스크롤 중 위아래 이웃 타일의 테두리·바닥 그림자가 서로를 파고든다
+     * (모바일 가로 844×390·데스크톱에서 확인). 스프링이 목표를 넘어 튀는 만큼도 여기서 자른다. */
+    const WOBBLE = { x: 3.5, y: 2.5, rot: 2 };
+
     const clearTileVars = () => {
       const len = Math.max(tiles.current.length, states.length);
       for (let i = 0; i < len; i++) {
@@ -238,6 +243,11 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
         st.x += st.vx;
         st.y += st.vy;
         st.rot += st.vrot;
+
+        // 스프링이 튀어도 셀 여백을 넘지 않게 실제 위치도 자른다.
+        st.x = clamp(st.x, -WOBBLE.x, WOBBLE.x);
+        st.y = clamp(st.y, -WOBBLE.y, WOBBLE.y);
+        st.rot = clamp(st.rot, -WOBBLE.rot, WOBBLE.rot);
 
         st.tx *= 0.84;
         st.ty *= 0.84;
@@ -301,9 +311,11 @@ export function Arcade({ works }: { works: ArcadeWork[] | null }) {
         const waveX = Math.cos(sPos * st.waveFreq + st.wavePhase) * speedFactor * 1.8;
         const waveY = Math.sin(sPos * st.waveFreq + st.wavePhase) * speedFactor * 2.2;
 
-        st.tx = clamp((-smoothDx * st.xGain + smoothDy * st.yCross * 0.5) * 0.22 * ripple + waveX, -6, 6);
-        st.ty = clamp((-smoothDy * st.xGain + smoothDx * st.yCross) * 0.22 * ripple + waveY, -5, 5);
-        st.trot = clamp((smoothDx * 0.11 - smoothDy * 0.08) * st.rotDir * ripple + waveY * 0.18, -2.4, 2.4);
+        // 진폭 상한은 타일 셀 여백에서 나온 값이다. 이보다 키우면 스크롤 중 위아래 이웃의
+        // 그림자·테두리가 서로를 파고든다(모바일 가로 844×390에서 확인).
+        st.tx = clamp((-smoothDx * st.xGain + smoothDy * st.yCross * 0.5) * 0.22 * ripple + waveX, -WOBBLE.x, WOBBLE.x);
+        st.ty = clamp((-smoothDy * st.xGain + smoothDx * st.yCross) * 0.22 * ripple + waveY, -WOBBLE.y, WOBBLE.y);
+        st.trot = clamp((smoothDx * 0.11 - smoothDy * 0.08) * st.rotDir * ripple + waveY * 0.18, -WOBBLE.rot, WOBBLE.rot);
       }
 
       if (!rafId) {
