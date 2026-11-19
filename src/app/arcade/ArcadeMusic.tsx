@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMuted, subscribeMuted } from "./sfx";
-import { setPlaying, setPlayHandler } from "./player";
+import { setPlaying, setPlayHandler, setFailed } from "./player";
 
 /**
  * 아케이드 배경음 셋. 이 순서로 이어 재생하고 끝나면 처음으로 돌아간다.
@@ -73,6 +73,7 @@ export function ArcadeMusic() {
           if (!alive || isMuted()) return;
           failures = 0;
           fadingOut = false;
+          setFailed(false);
           // 재생이 실제로 시작됐으니 첫 조작 대기 리스너는 이제 필요 없다.
           stopListening();
           fadeTo(VOLUME, FADE_IN_MS);
@@ -108,9 +109,11 @@ export function ArcadeMusic() {
     };
 
     const onError = () => {
-      // 받지 못한 곡은 건너뛴다. 세 곡이 모두 실패하면 조용히 멈춘다.
+      // 받지 못한 곡은 건너뛴다. 세 곡이 모두 실패하면 조용히 멈추고,
+      // 버튼이 "재생 시도"에 갇히지 않도록 실패 상태를 남긴다.
       if (failures + 1 >= TRACKS.length) {
         started = false;
+        setFailed(true);
         return;
       }
       failures += 1;

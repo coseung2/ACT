@@ -16,7 +16,7 @@ import {
   type WorkType,
 } from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
-import { isPlaying as isPlayingState, subscribePlaying, requestPlay } from "./player";
+import { isPlaying as isPlayingState, isFailed as isMusicFailed, subscribePlaying, requestPlay } from "./player";
 import { ArcadeMusic } from "./ArcadeMusic";
 import s from "./arcade.module.css";
 
@@ -63,6 +63,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   const sortBtn = useRef<HTMLButtonElement | null>(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const playing = useSyncExternalStore(subscribePlaying, isPlayingState, () => false);
+  /** 세 곡을 모두 못 받은 경우 — 이때는 버튼이 다시 "음소거"로 동작한다. */
+  const musicFailed = useSyncExternalStore(subscribePlaying, isMusicFailed, () => false);
   const [creditOpen, setCreditOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
@@ -518,7 +520,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
 
   const toggleSound = () => {
     // 자동재생이 막혀 "음소거는 풀렸는데 소리만 없는" 상태라면, 누를 때 끄는 게 아니라 재생을 시도한다.
-    if (!muted && !playing) {
+    // 곡을 아예 못 받은 경우에는 시도해도 소용없으니 평소처럼 음소거 스위치로 둔다.
+    if (!muted && !playing && !musicFailed) {
       requestPlay();
       sfx("select");
       return;
@@ -591,8 +594,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           className={s.hudBtn}
           onClick={toggleSound}
           aria-pressed={!muted}
-          aria-label={muted || !playing ? "배경음 켜기" : "배경음 끄기"}
-          title={muted || !playing ? "배경음 켜기" : "배경음 끄기"}
+          aria-label={muted || (!playing && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
+          title={muted || (!playing && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
         >
           <span className={s.eq} aria-hidden>
             <span />
