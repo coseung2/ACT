@@ -20,3 +20,18 @@ export function setPlaying(v: boolean) {
   playing = v;
   listeners.forEach((fn) => fn());
 }
+
+/**
+ * 화면 밖(버튼)에서 재생을 요청하는 통로.
+ * 자동재생이 막혀 음소거는 풀려 있는데 소리만 안 나는 상태에서,
+ * 버튼을 누르면 "끄기"가 아니라 "재생 시도"가 되도록 쓰인다.
+ */
+let playRequest: (() => void) | null = null;
+
+export function setPlayHandler(fn: (() => void) | null) {
+  playRequest = fn;
+}
+
+export function requestPlay() {
+  playRequest?.();
+}

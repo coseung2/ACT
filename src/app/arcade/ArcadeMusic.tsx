@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMuted, subscribeMuted } from "./sfx";
-import { setPlaying } from "./player";
+import { setPlaying, setPlayHandler } from "./player";
 
 /**
  * 아케이드 배경음 셋. 이 순서로 이어 재생하고 끝나면 처음으로 돌아간다.
@@ -122,8 +122,10 @@ export function ArcadeMusic() {
       else play();
     };
 
-    // 이퀄라이저 표시는 실제 재생 상태를 따른다(자동재생이 막히면 조용한 채로 멈춰 있다).
-    const onPlay = () => setPlaying(true);
+    // 이퀄라이저 표시는 실제로 소리가 나는 상태를 따른다. 데이터가 모자라 소리가 끊긴
+    // 구간(waiting)에도 막대가 움직이지 않게 하고, 재생이 시작될 때만 켠다.
+    const onPlaying = () => setPlaying(true);
+    const onWaiting = () => setPlaying(false);
     const onPause = () => setPlaying(false);
 
     // 첫 소리는 사용자 조작 안에서 시작해야 한다. 터치·마우스 모두 click으로 들어온다.
@@ -135,7 +137,8 @@ export function ArcadeMusic() {
     el.addEventListener("ended", next);
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("error", onError);
-    el.addEventListener("play", onPlay);
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("waiting", onWaiting);
     el.addEventListener("pause", onPause);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("click", onGesture);
@@ -155,14 +158,21 @@ export function ArcadeMusic() {
 
     // 들어오자마자 재생을 시도한다. 사이트 안에서 이동해 왔다면 이 조작이 인정되어 바로 시작한다.
     play();
+    // 자동재생이 막혔을 때 버튼 한 번으로 재생을 다시 시도할 수 있게 한다.
+    setPlayHandler(() => {
+      started = true;
+      play();
+    });
 
     return () => {
       alive = false;
       setPlaying(false);
+      setPlayHandler(null);
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("error", onError);
-      el.removeEventListener("play", onPlay);
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("waiting", onWaiting);
       el.removeEventListener("pause", onPause);
       document.removeEventListener("visibilitychange", onVisibility);
       stopListening();

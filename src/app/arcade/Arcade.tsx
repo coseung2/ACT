@@ -16,7 +16,7 @@ import {
   type WorkType,
 } from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
-import { isPlaying as isPlayingState, subscribePlaying } from "./player";
+import { isPlaying as isPlayingState, subscribePlaying, requestPlay } from "./player";
 import { ArcadeMusic } from "./ArcadeMusic";
 import s from "./arcade.module.css";
 
@@ -517,6 +517,12 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   }, []);
 
   const toggleSound = () => {
+    // 자동재생이 막혀 "음소거는 풀렸는데 소리만 없는" 상태라면, 누를 때 끄는 게 아니라 재생을 시도한다.
+    if (!muted && !playing) {
+      requestPlay();
+      sfx("select");
+      return;
+    }
     const next = !muted;
     setMuted(next);
     if (!next) sfx("select");
@@ -585,8 +591,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           className={s.hudBtn}
           onClick={toggleSound}
           aria-pressed={!muted}
-          aria-label={muted ? "배경음 켜기" : "배경음 끄기"}
-          title={muted ? "배경음 켜기" : "배경음 끄기"}
+          aria-label={muted || !playing ? "배경음 켜기" : "배경음 끄기"}
+          title={muted || !playing ? "배경음 켜기" : "배경음 끄기"}
         >
           <span className={s.eq} aria-hidden>
             <span />
