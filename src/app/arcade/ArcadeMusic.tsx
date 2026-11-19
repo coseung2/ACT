@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMuted, subscribeMuted } from "./sfx";
+import { setPlaying, setPlayHandler, setFailed, setStarted } from "./player";
 
 /**
  * 아케이드 배경음 셋. 이 순서로 이어 재생하고 끝나면 처음으로 돌아간다.
@@ -18,8 +19,9 @@ const FADE_OUT_MS = 1200;
 
 /**
  * 배경음 재생기.
- * 브라우저는 조작 없이 소리를 내지 못하므로 첫 클릭·키 입력에서 시작하고,
- * 그 뒤로는 화면이 보이는 동안 계속 재생한다. 음소거는 효과음과 같은 스위치를 쓴다.
+ * 들어오면 바로 재생을 시도한다. 브라우저가 막으면(첫 방문에 조작이 없었던 경우)
+ * 그때만 첫 클릭·키 입력을 기다렸다가 시작하고, 그 뒤로는 화면이 보이는 동안 계속 재생한다.
+ * 음소거는 효과음과 같은 스위치를 쓴다.
  */
 export function ArcadeMusic() {
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
@@ -32,8 +34,8 @@ export function ArcadeMusic() {
     if (!el) return;
 
     let track = 0;
-    /** 사용자가 한 번이라도 조작했는가. 조작 전에는 소리를 내지 않는다. */
-    let started = false;
+    /** 사용자가 한 번이라도 조작했는가. 자동재생이 막히면 첫 조작에서 다시 시도한다. */
+    let started = true;
     let fadingOut = false;
     let failures = 0;
     let fadeTimer = 0;
@@ -71,6 +73,7 @@ export function ArcadeMusic() {
           if (!alive || isMuted()) return;
           failures = 0;
           fadingOut = false;
+          setFailed(false);
           // 재생이 실제로 시작됐으니 첫 조작 대기 리스너는 이제 필요 없다.
           stopListening();
           fadeTo(VOLUME, FADE_IN_MS);
@@ -106,9 +109,11 @@ export function ArcadeMusic() {
     };
 
     const onError = () => {
-      // 받지 못한 곡은 건너뛴다. 세 곡이 모두 실패하면 조용히 멈춘다.
+      // 받지 못한 곡은 건너뛴다. 세 곡이 모두 실패하면 조용히 멈추고,
+      // 버튼이 "재생 시도"에 갇히지 않도록 실패 상태를 남긴다.
       if (failures + 1 >= TRACKS.length) {
         started = false;
+        setFailed(true);
         return;
       }
       failures += 1;
@@ -120,6 +125,15 @@ export function ArcadeMusic() {
       else play();
     };
 
+    // 이퀄라이저 표시는 실제로 소리가 나는 상태를 따른다. 데이터가 모자라 소리가 끊긴
+    // 구간(waiting)에도 막대가 움직이지 않게 하고, 재생이 시작될 때만 켠다.
+    const onPlaying = () => {
+      setStarted(true);
+      setPlaying(true);
+    };
+    const onWaiting = () => setPlaying(false);
+    const onPause = () => setPlaying(false);
+
     // 첫 소리는 사용자 조작 안에서 시작해야 한다. 터치·마우스 모두 click으로 들어온다.
     function onGesture() {
       started = true;
@@ -129,6 +143,9 @@ export function ArcadeMusic() {
     el.addEventListener("ended", next);
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("error", onError);
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("waiting", onWaiting);
+    el.addEventListener("pause", onPause);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("click", onGesture);
     window.addEventListener("keydown", onGesture);
@@ -140,15 +157,31 @@ export function ArcadeMusic() {
         el.pause();
       },
       resume() {
+        started = true;
         play();
       },
     };
 
+    // 들어오자마자 재생을 시도한다. 사이트 안에서 이동해 왔다면 이 조작이 인정되어 바로 시작한다.
+    play();
+    // 자동재생이 막혔을 때 버튼 한 번으로 재생을 다시 시도할 수 있게 한다.
+    setPlayHandler(() => {
+      started = true;
+      play();
+    });
+
     return () => {
       alive = false;
+      setPlaying(false);
+      setFailed(false);
+      setStarted(false);
+      setPlayHandler(null);
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("error", onError);
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("waiting", onWaiting);
+      el.removeEventListener("pause", onPause);
       document.removeEventListener("visibilitychange", onVisibility);
       stopListening();
       clearFade();

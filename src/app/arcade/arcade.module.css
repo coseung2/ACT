@@ -247,6 +247,26 @@
     display: none;
   }
 }
+/* 버튼이 넷(sort·음악·출처·웹)이라 390px쯤에서는 왼쪽 제목과 겹친다.
+ * 버튼을 줄이고, 제목은 남는 폭에서 말줄임으로 자른다. */
+@media (max-width: 430px) {
+  .hudLeft {
+    max-width: calc(100% - 176px);
+  }
+  .hudTitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hudRight {
+    gap: 6px;
+  }
+  .hudBtn,
+  .sortBtn {
+    width: 32px;
+    height: 32px;
+  }
+}
 @media (max-width: 480px) and (max-height: 520px) {
   .sortBtn {
     width: 32px;
@@ -590,32 +610,79 @@
   font-weight: 700;
 }
 
-/* 배경음 크레딧 — 출처 표기 조건이 있는 곡은 화면 안에 남긴다.
- * 밝은 그라데이션 위에서도 읽히도록 어두운 칩을 깔고, 패널이 열리면 그 위로 올린다. */
-.credit {
-  position: absolute;
-  left: var(--safe-l);
-  bottom: calc(4px + var(--safe-b));
-  z-index: 2;
-  max-width: min(92vw, 640px);
-  margin: 0;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: rgba(16, 20, 42, 0.72);
-  color: #fff;
-  font-size: 10px;
-  line-height: 1.35;
-  letter-spacing: 0.01em;
-  /* 두 줄까지만 — 더 길어지면 타일 쪽으로 올라와 가린다. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  pointer-events: none;
+/* 배경음 이퀄라이저 — 실제로 재생 중일 때만 막대가 움직인다.
+ * 자동재생이 막혀 소리가 나지 않는 상태에서는 조용히 멈춰 있어 오해를 만들지 않는다. */
+.eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 15px;
 }
-.root[data-open] .credit {
-  z-index: 5;
-  bottom: calc(var(--panel-h) + var(--safe-b) + 6px);
+.eq > span {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleY(0.34);
+  transform-origin: bottom;
+  animation: eqBar 820ms ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.eq > span:nth-child(2) {
+  animation-duration: 620ms;
+  animation-delay: -160ms;
+}
+.eq > span:nth-child(3) {
+  animation-duration: 940ms;
+  animation-delay: -320ms;
+}
+.eq > span:nth-child(4) {
+  animation-duration: 700ms;
+  animation-delay: -80ms;
+}
+.root[data-playing] .eq > span {
+  animation-play-state: running;
+}
+@keyframes eqBar {
+  from { transform: scaleY(0.28); }
+  to { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq > span {
+    animation: none;
+    transform: scaleY(0.62);
+  }
+}
+
+/* 음악 출처 — 출처 표기 조건이 있는 곡의 크레딧을 접어 둔다. */
+.creditWrap {
+  position: relative;
+  display: flex;
+}
+.creditPop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 4;
+  width: min(80vw, 330px);
+  padding: 8px 10px;
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+}
+.creditPop p {
+  margin: 0;
+}
+.creditPop p + p {
+  margin-top: 4px;
+}
+.creditPop a {
+  color: inherit;
 }
 
 /* ── 입장 패널 ──────────────────────────────────────────── */

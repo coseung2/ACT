@@ -16,6 +16,7 @@ import {
   type WorkType,
 } from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
+import { isPlaying as isPlayingState, hasStarted as hasMusicStarted, isFailed as isMusicFailed, subscribePlaying, requestPlay } from "./player";
 import { ArcadeMusic } from "./ArcadeMusic";
 import s from "./arcade.module.css";
 
@@ -61,6 +62,12 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   const sortWrap = useRef<HTMLDivElement | null>(null);
   const sortBtn = useRef<HTMLButtonElement | null>(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
+  const playing = useSyncExternalStore(subscribePlaying, isPlayingState, () => false);
+  /** 세 곡을 모두 못 받은 경우 — 이때는 버튼이 다시 "음소거"로 동작한다. */
+  const musicFailed = useSyncExternalStore(subscribePlaying, isMusicFailed, () => false);
+  /** 이번 방문에서 한 번이라도 재생이 시작됐는지. 버퍼링 때문에 잠깐 멈춘 것과 구분한다. */
+  const musicStarted = useSyncExternalStore(subscribePlaying, hasMusicStarted, () => false);
+  const [creditOpen, setCreditOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -514,13 +521,20 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   }, []);
 
   const toggleSound = () => {
+    // 자동재생이 막혀 "음소거는 풀렸는데 소리만 없는" 상태라면, 누를 때 끄는 게 아니라 재생을 시도한다.
+    // 이미 재생된 적이 있거나(버퍼링) 곡을 아예 못 받은 경우에는 평소처럼 음소거 스위치로 둔다.
+    if (!muted && !playing && !musicStarted && !musicFailed) {
+      requestPlay();
+      sfx("select");
+      return;
+    }
     const next = !muted;
     setMuted(next);
     if (!next) sfx("select");
   };
 
   return (
-    <div className={s.root} data-open={current ? "" : undefined} data-launching={launching ? "" : undefined}>
+    <div className={s.root} data-open={current ? "" : undefined} data-launching={launching ? "" : undefined} data-playing={playing ? "" : undefined}>
       {/* 배경음 — 첫 조작 뒤에 시작하고, 효과음과 같은 음소거 스위치를 쓴다 */}
       <ArcadeMusic />
 
@@ -576,19 +590,58 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
             </div>
           )}
         </div>
-        <button type="button" className={s.hudBtn} onClick={toggleSound} aria-pressed={!muted} aria-label="소리" title={muted ? "소리 켜기" : "소리 끄기"}>
-          {muted ? (
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
-              <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
-              <path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
-              <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
-              <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-          )}
+        {/* 배경음 토글 — 지금 소리가 나고 있는지 이퀄라이저로 보여 준다 */}
+        <button
+          type="button"
+          className={s.hudBtn}
+          onClick={toggleSound}
+          aria-pressed={!muted}
+          aria-label={muted || (!playing && !musicStarted && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
+          title={muted || (!playing && !musicStarted && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
+        >
+          <span className={s.eq} aria-hidden>
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
         </button>
+        {/* 음악 출처 — 출처 표기 조건이 있는 곡의 크레딧은 여기에 접어 둔다 */}
+        <div
+          className={s.creditWrap}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCreditOpen(false);
+          }}
+        >
+          <button
+            type="button"
+            className={s.hudBtn}
+            onClick={() => setCreditOpen((open) => !open)}
+            aria-expanded={creditOpen}
+            aria-label="음악 출처"
+            title="음악 출처"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+              <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="2.2" />
+              <path d="M12 11v5.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+              <circle cx="12" cy="7.8" r="1.3" fill="currentColor" />
+            </svg>
+          </button>
+          {creditOpen && (
+            <div className={s.creditPop} role="group" aria-label="음악 출처">
+              <p>
+                <b>Arcade Quirkiness</b>, <b>Nostalgic for Arcades</b> — Eric Matyas,{" "}
+                <a href="https://soundimage.org" target="_blank" rel="noreferrer">
+                  soundimage.org
+                </a>{" "}
+                (CC BY 4.0)
+              </p>
+              <p>
+                <b>Happy Adventure</b> — TinyWorlds, OpenGameArt (CC0)
+              </p>
+            </div>
+          )}
+        </div>
         <Link href="/?web=1" className={s.hudBtn} aria-label="웹 화면으로 보기">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
             <rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2.2" />
@@ -701,12 +754,6 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
         )}
       </div>
 
-      {/* 배경음 크레딧 — 출처 표기 조건이 있는 곡은 화면 안에 곡 이름과 출처를 남긴다.
-          글자만 두어 타일 클릭을 가로채지 않는다(표기 조건은 주소 텍스트로 충족). */}
-      <p className={s.credit}>
-        음악 · Eric Matyas: “Arcade Quirkiness”, “Nostalgic for Arcades”
-        <br />soundimage.org · “Happy Adventure” (CC0, TinyWorlds)
-      </p>
     </div>
   );
 }
