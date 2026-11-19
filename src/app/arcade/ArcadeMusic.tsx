@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMuted, subscribeMuted } from "./sfx";
+import { setPlaying } from "./player";
 
 /**
  * 아케이드 배경음 셋. 이 순서로 이어 재생하고 끝나면 처음으로 돌아간다.
@@ -18,8 +19,9 @@ const FADE_OUT_MS = 1200;
 
 /**
  * 배경음 재생기.
- * 브라우저는 조작 없이 소리를 내지 못하므로 첫 클릭·키 입력에서 시작하고,
- * 그 뒤로는 화면이 보이는 동안 계속 재생한다. 음소거는 효과음과 같은 스위치를 쓴다.
+ * 들어오면 바로 재생을 시도한다. 브라우저가 막으면(첫 방문에 조작이 없었던 경우)
+ * 그때만 첫 클릭·키 입력을 기다렸다가 시작하고, 그 뒤로는 화면이 보이는 동안 계속 재생한다.
+ * 음소거는 효과음과 같은 스위치를 쓴다.
  */
 export function ArcadeMusic() {
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
@@ -32,8 +34,8 @@ export function ArcadeMusic() {
     if (!el) return;
 
     let track = 0;
-    /** 사용자가 한 번이라도 조작했는가. 조작 전에는 소리를 내지 않는다. */
-    let started = false;
+    /** 사용자가 한 번이라도 조작했는가. 자동재생이 막히면 첫 조작에서 다시 시도한다. */
+    let started = true;
     let fadingOut = false;
     let failures = 0;
     let fadeTimer = 0;
@@ -120,6 +122,10 @@ export function ArcadeMusic() {
       else play();
     };
 
+    // 이퀄라이저 표시는 실제 재생 상태를 따른다(자동재생이 막히면 조용한 채로 멈춰 있다).
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+
     // 첫 소리는 사용자 조작 안에서 시작해야 한다. 터치·마우스 모두 click으로 들어온다.
     function onGesture() {
       started = true;
@@ -129,6 +135,8 @@ export function ArcadeMusic() {
     el.addEventListener("ended", next);
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("error", onError);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("click", onGesture);
     window.addEventListener("keydown", onGesture);
@@ -140,15 +148,22 @@ export function ArcadeMusic() {
         el.pause();
       },
       resume() {
+        started = true;
         play();
       },
     };
 
+    // 들어오자마자 재생을 시도한다. 사이트 안에서 이동해 왔다면 이 조작이 인정되어 바로 시작한다.
+    play();
+
     return () => {
       alive = false;
+      setPlaying(false);
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("error", onError);
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
       document.removeEventListener("visibilitychange", onVisibility);
       stopListening();
       clearFade();
