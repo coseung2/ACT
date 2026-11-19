@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMuted, subscribeMuted } from "./sfx";
-import { setPlaying, setPlayHandler, setFailed } from "./player";
+import { setPlaying, setPlayHandler, setFailed, setStarted } from "./player";
 
 /**
  * 아케이드 배경음 셋. 이 순서로 이어 재생하고 끝나면 처음으로 돌아간다.
@@ -127,7 +127,10 @@ export function ArcadeMusic() {
 
     // 이퀄라이저 표시는 실제로 소리가 나는 상태를 따른다. 데이터가 모자라 소리가 끊긴
     // 구간(waiting)에도 막대가 움직이지 않게 하고, 재생이 시작될 때만 켠다.
-    const onPlaying = () => setPlaying(true);
+    const onPlaying = () => {
+      setStarted(true);
+      setPlaying(true);
+    };
     const onWaiting = () => setPlaying(false);
     const onPause = () => setPlaying(false);
 
@@ -171,6 +174,7 @@ export function ArcadeMusic() {
       alive = false;
       setPlaying(false);
       setFailed(false);
+      setStarted(false);
       setPlayHandler(null);
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
