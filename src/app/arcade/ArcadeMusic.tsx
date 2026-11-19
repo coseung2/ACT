@@ -170,6 +170,7 @@ export function ArcadeMusic() {
     return () => {
       alive = false;
       setPlaying(false);
+      setFailed(false);
       setPlayHandler(null);
       el.removeEventListener("ended", next);
       el.removeEventListener("timeupdate", onTime);
