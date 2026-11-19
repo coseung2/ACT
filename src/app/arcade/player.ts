@@ -4,12 +4,18 @@
  * 자동재생이 막힌 경우 음소거는 풀려 있지만 소리는 나지 않는다).
  */
 let playing = false;
+/** 이번 방문에서 재생이 한 번이라도 시작됐는가. 버퍼링(waiting)과 "아직 못 틀었음"을 구분한다. */
+let started = false;
 /** 세 곡을 모두 받지 못해 재생 자체가 불가능한 상태. 버튼이 "재생 시도"에 갇히지 않게 구분한다. */
 let failed = false;
 const listeners = new Set<() => void>();
 
 export function isPlaying() {
   return playing;
+}
+
+export function hasStarted() {
+  return started;
 }
 
 export function isFailed() {
@@ -24,6 +30,12 @@ export function subscribePlaying(fn: () => void) {
 export function setPlaying(v: boolean) {
   if (playing === v) return;
   playing = v;
+  listeners.forEach((fn) => fn());
+}
+
+export function setStarted(v: boolean) {
+  if (started === v) return;
+  started = v;
   listeners.forEach((fn) => fn());
 }
 

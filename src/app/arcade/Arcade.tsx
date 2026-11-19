@@ -16,7 +16,7 @@ import {
   type WorkType,
 } from "@/lib/content/types";
 import { sfx, setMuted, isMuted, subscribeMuted } from "./sfx";
-import { isPlaying as isPlayingState, isFailed as isMusicFailed, subscribePlaying, requestPlay } from "./player";
+import { isPlaying as isPlayingState, hasStarted as hasMusicStarted, isFailed as isMusicFailed, subscribePlaying, requestPlay } from "./player";
 import { ArcadeMusic } from "./ArcadeMusic";
 import s from "./arcade.module.css";
 
@@ -65,6 +65,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
   const playing = useSyncExternalStore(subscribePlaying, isPlayingState, () => false);
   /** 세 곡을 모두 못 받은 경우 — 이때는 버튼이 다시 "음소거"로 동작한다. */
   const musicFailed = useSyncExternalStore(subscribePlaying, isMusicFailed, () => false);
+  /** 이번 방문에서 한 번이라도 재생이 시작됐는지. 버퍼링 때문에 잠깐 멈춘 것과 구분한다. */
+  const musicStarted = useSyncExternalStore(subscribePlaying, hasMusicStarted, () => false);
   const [creditOpen, setCreditOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
@@ -520,8 +522,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
 
   const toggleSound = () => {
     // 자동재생이 막혀 "음소거는 풀렸는데 소리만 없는" 상태라면, 누를 때 끄는 게 아니라 재생을 시도한다.
-    // 곡을 아예 못 받은 경우에는 시도해도 소용없으니 평소처럼 음소거 스위치로 둔다.
-    if (!muted && !playing && !musicFailed) {
+    // 이미 재생된 적이 있거나(버퍼링) 곡을 아예 못 받은 경우에는 평소처럼 음소거 스위치로 둔다.
+    if (!muted && !playing && !musicStarted && !musicFailed) {
       requestPlay();
       sfx("select");
       return;
@@ -594,8 +596,8 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
           className={s.hudBtn}
           onClick={toggleSound}
           aria-pressed={!muted}
-          aria-label={muted || (!playing && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
-          title={muted || (!playing && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
+          aria-label={muted || (!playing && !musicStarted && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
+          title={muted || (!playing && !musicStarted && !musicFailed) ? "배경음 켜기" : "배경음 끄기"}
         >
           <span className={s.eq} aria-hidden>
             <span />
