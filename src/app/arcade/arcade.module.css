@@ -283,6 +283,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior: contain;
+  touch-action: pan-x;
   scrollbar-width: none;
   cursor: grab;
 }
@@ -351,6 +352,7 @@
   .scroller {
     overflow-x: hidden;
     overflow-y: auto;
+    touch-action: pan-y;
   }
   .grid {
     grid-auto-flow: row;
@@ -392,6 +394,8 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  touch-action: inherit;
+  -webkit-user-drag: none;
   /* 산개(회전 ±2.8deg · 오프셋 ±6px)가 셀 여백을 넘어 이웃 타일과 겹친다.
    * 카드를 10% 줄여 셀 안에 여백을 만들고, 스크롤 중 흔들림은 아래 tick()의 진폭 상한과
    * 넉넉한 세로 간격(--row-gap)으로 셀 안에 가둔다. 그림자까지 이웃을 넘지 않아야 한다.
