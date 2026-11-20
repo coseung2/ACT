@@ -431,9 +431,10 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
     };
     reduceMotion.addEventListener("change", onReduceChange);
 
-    // PC 마우스 드래그로도 가로/세로 스크롤을 당길 수 있게 지원
+    // PC 마우스 드래그 및 터치 모니터(네이티브 스크롤이 안 먹는 환경 포함) 드래그 스크롤 지원
     let dragging = false;
     let dragPointer = -1;
+    let dragPointerType = "";
     let startX = 0;
     let startY = 0;
     let startLeft = 0;
@@ -444,10 +445,12 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       swallowClickUntil.current = 0;
       pointerX = e.clientX;
       pointerY = e.clientY;
-      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.pointerType !== "mouse" && e.pointerType !== "touch" && e.pointerType !== "pen") return;
       dragging = true;
       // 드래그를 시작한 포인터만 끝낸다. 손가락을 떼는 pointerup이 마우스 드래그를 끊지 않게.
       dragPointer = e.pointerId;
+      dragPointerType = e.pointerType;
       draggedRef.current = false;
       startX = e.clientX;
       startY = e.clientY;
@@ -459,6 +462,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       if (!dragging || e.pointerId !== dragPointer) return;
       dragging = false;
       dragPointer = -1;
+      dragPointerType = "";
       delete el.dataset.dragging;
       // 드래그로 끝난 클릭은 삼킨다. setTimeout(0) 순서에 기대지 않고 명시적인 시간 창을 둔다.
       if (draggedRef.current) swallowClickUntil.current = performance.now() + 400;
@@ -468,7 +472,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       pointerX = e.clientX;
       pointerY = e.clientY;
       if (!dragging || e.pointerId !== dragPointer) return;
-      if ((e.buttons & 1) === 0) {
+      if (dragPointerType === "mouse" && (e.buttons & 1) === 0) {
         onPointerUp(e);
         return;
       }
@@ -654,6 +658,7 @@ export function Arcade({ works, sort: initialSort }: { works: ArcadeWork[] | nul
       <div
         ref={scrollerRef}
         className={s.scroller}
+        onDragStart={(e) => e.preventDefault()}
         onClick={(e) => {
           if (swallowedClick(e, swallowClickUntil.current)) return;
           if (e.target === e.currentTarget) close();
